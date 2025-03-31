@@ -18,15 +18,27 @@ type Manager struct {
 	Max       uint64
 	Broadcast chan []byte
 	Errs      chan error
-	location  *time.Location
 	mu        sync.Mutex
+
+	// client config
+	location                        *time.Location
+	ReadBufferSize, WriteBufferSize int
+	SendLimit                       uint
 }
 
-func NewManager() *Manager {
+func NewManager() {
 	Once.Do(func() {
-
+		SocketManager = &Manager{
+			Register:        make(chan *Client, 10),
+			Unset:           make(chan *Client, 10),
+			Broadcast:       make(chan []byte, 10),
+			Errs:            make(chan error, 10),
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			SendLimit:       10,
+		}
+		go SocketManager.Scheduler()
 	})
-	return SocketManager
 }
 
 func (m *Manager) SetLocation(zone string) *Manager {
@@ -37,4 +49,8 @@ func (m *Manager) SetLocation(zone string) *Manager {
 	}
 	m.location = location
 	return m
+}
+
+func (m *Manager) Scheduler() {
+
 }

@@ -28,8 +28,8 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	}
 
 	conn, err := (&websocket.Upgrader{
-		ReadBufferSize:  4096,
-		WriteBufferSize: 4096,
+		ReadBufferSize:  SocketManager.ReadBufferSize,
+		WriteBufferSize: SocketManager.WriteBufferSize,
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
@@ -42,6 +42,7 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	client := NewClient(conn)
 	go client.Read()
 	go client.Write()
+	go client.Heartbeat()
 
 	// 注册
 	SocketManager.Register <- client
