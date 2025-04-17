@@ -40,11 +40,14 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	}
 
 	client := NewClient(conn)
-	go client.Read()
+	// register client
+	SocketManager.Register <- client
+
+	go client.Read(func(client *Client, send Send) {
+		// TODO handle message
+	})
 	go client.Write()
 	go client.Heartbeat()
 
-	// 注册
-	SocketManager.Register <- client
 	return nil
 }

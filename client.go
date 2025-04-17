@@ -3,27 +3,30 @@ package websocket
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
+	"go.uber.org/zap"
 	"time"
 )
 
+type Handler func(client *Client, send Send)
+
 type Client struct {
 	context.Context
-	Fd          string
+
+	Id          string
 	Socket      *websocket.Conn
 	Send        chan Send
-	sendIsClose bool
-	limit       uint
+	SendIsClose bool
 
 	firstTime int64
 	lastTime  int64
 	timeout   int64
 	gap       int64
 
-	close chan struct{}
-	errs  chan error
+	close  chan struct{}
+	errs   chan error
+	logger *zap.Logger
 }
 
 type Send struct {
@@ -33,30 +36,32 @@ type Send struct {
 
 func NewClient(conn *websocket.Conn) *Client {
 	return &Client{
-		Fd:     uuid.NewV4().String(),
+		Id:     uuid.NewV4().String(),
 		Socket: conn,
 		Send:   make(chan Send, 10),
 		close:  make(chan struct{}, 1),
+		errs:   make(chan error, 10),
 	}
 }
 
-func (c *Client) SetLimit(limit uint) *Client {
-	c.limit = limit
-	return c
-}
-
 // Read message
-func (c *Client) Read() {
-	for {
-		messageType, message, err := c.Socket.ReadMessage()
-		if err != nil {
-			var closeErr *websocket.CloseError
-			if errors.As(err, &closeErr) {
-				fmt.Println(messageType, message)
-				// c.Close()
-			}
-			return
+func (c *Client) Read(handler Handler) {
+	defer func() {
+		if err := recover(); err != nil {
+			c.logger.Error("websocket read error", zap.Any("error", err))
+			c.Close()
 		}
+	}()
+
+	for {
+		types, message, err := c.Socket.ReadMessage()
+		if err != nil {
+			break
+		}
+		handler(c, Send{
+			Protocol: types,
+			Message:  message,
+		})
 	}
 }
 
@@ -75,7 +80,7 @@ func (c *Client) Write() {
 
 // SendMessage Send message
 func (c *Client) SendMessage(message Send) {
-	if !c.sendIsClose {
+	if !c.SendIsClose {
 		c.Send <- message
 	}
 }

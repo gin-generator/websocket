@@ -1,6 +1,8 @@
 package websocket
 
 import (
+	"fmt"
+	"github.com/gorilla/websocket"
 	"sync"
 	"time"
 )
@@ -23,7 +25,6 @@ type Manager struct {
 	// client config
 	location                        *time.Location
 	ReadBufferSize, WriteBufferSize int
-	SendLimit                       uint
 }
 
 func NewManager() {
@@ -35,7 +36,6 @@ func NewManager() {
 			Errs:            make(chan error, 10),
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-			SendLimit:       10,
 		}
 		go SocketManager.Scheduler()
 	})
@@ -52,5 +52,27 @@ func (m *Manager) SetLocation(zone string) *Manager {
 }
 
 func (m *Manager) Scheduler() {
-
+	for {
+		select {
+		case client := <-m.Register:
+			fmt.Println(client)
+		case client := <-m.Unset:
+			fmt.Println(client)
+		case message := <-m.Broadcast:
+			m.Pool.Range(func(_, value any) bool {
+				client, ok := value.(*Client)
+				if ok {
+					go func(c *Client, msg []byte) {
+						c.Send <- Send{
+							Protocol: websocket.TextMessage,
+							Message:  msg,
+						}
+					}(client, message)
+				}
+				return true
+			})
+		case err := <-m.Errs:
+			fmt.Println("Error:", err)
+		}
+	}
 }
