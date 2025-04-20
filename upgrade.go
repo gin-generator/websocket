@@ -23,7 +23,7 @@ func CreateConnect() gin.HandlerFunc {
 // Upgrade websocket链接
 func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 
-	if SocketManager.Total >= SocketManager.Max {
+	if SocketManager.total >= SocketManager.Max {
 		return errors.New("websocket service connections exceeded the upper limit")
 	}
 
@@ -40,6 +40,11 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	}
 
 	client := NewClient(conn)
+	// first message
+	client.Send <- Send{
+		Protocol: websocket.TextMessage,
+		Message:  []byte("hello"),
+	}
 	// register client
 	SocketManager.Register <- client
 

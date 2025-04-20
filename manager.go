@@ -1,8 +1,7 @@
 package websocket
 
 import (
-	"fmt"
-	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 )
@@ -10,16 +9,17 @@ import (
 var (
 	SocketManager *Manager
 	Once          sync.Once
+	Logger        *zap.Logger
 )
 
 type Manager struct {
 	Pool      sync.Map
 	Register  chan *Client
 	Unset     chan *Client
-	Total     uint64
 	Max       uint64
 	Broadcast chan []byte
 	Errs      chan error
+	total     uint64
 	mu        sync.Mutex
 
 	// client config
@@ -37,7 +37,6 @@ func NewManager() {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		}
-		go SocketManager.Scheduler()
 	})
 }
 
@@ -49,30 +48,4 @@ func (m *Manager) SetLocation(zone string) *Manager {
 	}
 	m.location = location
 	return m
-}
-
-func (m *Manager) Scheduler() {
-	for {
-		select {
-		case client := <-m.Register:
-			fmt.Println(client)
-		case client := <-m.Unset:
-			fmt.Println(client)
-		case message := <-m.Broadcast:
-			m.Pool.Range(func(_, value any) bool {
-				client, ok := value.(*Client)
-				if ok {
-					go func(c *Client, msg []byte) {
-						c.Send <- Send{
-							Protocol: websocket.TextMessage,
-							Message:  msg,
-						}
-					}(client, message)
-				}
-				return true
-			})
-		case err := <-m.Errs:
-			fmt.Println("Error:", err)
-		}
-	}
 }

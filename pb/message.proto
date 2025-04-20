@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package message;
+
+option go_package = "./message";
+
+message Message {
+  string request_id = 1;
+  string command = 2;
+  int32 code = 3;
+  string message = 4;
+  bytes data = 5;
+}

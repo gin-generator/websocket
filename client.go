@@ -24,9 +24,8 @@ type Client struct {
 	timeout   int64
 	gap       int64
 
-	close  chan struct{}
-	errs   chan error
-	logger *zap.Logger
+	close chan struct{}
+	errs  chan error
 }
 
 type Send struct {
@@ -48,7 +47,7 @@ func NewClient(conn *websocket.Conn) *Client {
 func (c *Client) Read(handler Handler) {
 	defer func() {
 		if err := recover(); err != nil {
-			c.logger.Error("websocket read error", zap.Any("error", err))
+			Logger.Error("websocket read error", zap.Any("error", err))
 			c.Close()
 		}
 	}()
