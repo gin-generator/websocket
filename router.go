@@ -5,6 +5,9 @@ import (
 	"sync"
 )
 
+// Handler function type
+type Handler func(client *Client, send Send)
+
 type Message struct {
 	RequestId string `json:"request_id"`
 	Command   string `json:"command"`

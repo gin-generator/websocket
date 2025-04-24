@@ -1,31 +1,24 @@
 package websocket
 
 import (
-	"context"
 	"errors"
+	"fmt"
+	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
-	"go.uber.org/zap"
 	"time"
 )
 
-type Handler func(client *Client, send Send)
-
 type Client struct {
-	context.Context
-
-	Id          string
-	Socket      *websocket.Conn
-	Send        chan Send
-	SendIsClose bool
-
-	firstTime int64
-	lastTime  int64
-	timeout   int64
-	gap       int64
-
-	close chan struct{}
-	errs  chan error
+	Id        string          // unique identifier for each connection
+	Socket    *websocket.Conn // user connection
+	Send      chan Send       // send message
+	SendClose bool            // send channel is close
+	close     chan struct{}   // close channel
+	firstTime int64           // first connection time
+	lastTime  int64           // last heartbeat time
+	timeout   int64           // heartbeat timeout
+	interval  int64           // heartbeat interval
 }
 
 type Send struct {
@@ -39,55 +32,69 @@ func NewClient(conn *websocket.Conn) *Client {
 		Socket: conn,
 		Send:   make(chan Send, 10),
 		close:  make(chan struct{}, 1),
-		errs:   make(chan error, 10),
 	}
 }
 
 // Read message
-func (c *Client) Read(handler Handler) {
+func (c *Client) Read() {
 	defer func() {
 		if err := recover(); err != nil {
-			Logger.Error("websocket read error", zap.Any("error", err))
-			c.Close()
+			color.Red("Client %s read error: %v", c.Id, err)
 		}
 	}()
 
+	var closeErr *websocket.CloseError
 	for {
 		types, message, err := c.Socket.ReadMessage()
-		if err != nil {
-			break
+		if err != nil && errors.As(err, &closeErr) {
+			c.Close()
+			return
 		}
-		handler(c, Send{
-			Protocol: types,
-			Message:  message,
-		})
+
+		// TODO
+		fmt.Println(types, message)
 	}
 }
 
 // Write Send message
 func (c *Client) Write() {
+	defer func() {
+		if err := recover(); err != nil {
+			color.Red("Client %s write error: %v", c.Id, err)
+		}
+	}()
+
+	var closeErr *websocket.CloseError
 	for v := range c.Send {
-		if err := c.Socket.WriteMessage(v.Protocol, v.Message); err != nil {
-			var closeErr *websocket.CloseError
-			if errors.As(err, &closeErr) {
-				// c.Close()
-				return
-			}
+		if err := c.Socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
+			return
 		}
 	}
 }
 
 // SendMessage Send message
 func (c *Client) SendMessage(message Send) {
-	if !c.SendIsClose {
+	if !c.SendClose {
 		c.Send <- message
 	}
 }
 
 // Close logout
 func (c *Client) Close() {
+	defer close(c.close)
 	c.close <- struct{}{}
-	SocketManager.Unset <- c
+
+	select {
+	case <-c.Send:
+	default:
+		close(c.Send)
+		c.SendClose = true
+	}
+
+	err := c.Socket.Close()
+	if err != nil {
+		SocketManager.Errs <- err
+	}
 }
 
 // SetLastTime Set the last time
@@ -95,15 +102,15 @@ func (c *Client) SetLastTime(currentTime int64) {
 	c.lastTime = currentTime
 }
 
-// IsTimeout Timeout or not
-func (c *Client) IsTimeout(currentTime int64) bool {
+// Timeout or not
+func (c *Client) Timeout(currentTime int64) bool {
 	return c.lastTime+c.timeout <= currentTime
 }
 
 // Heartbeat detection
 func (c *Client) Heartbeat() {
-	EventListener(time.Millisecond*time.Duration(c.gap), func() {
-		if c.IsTimeout(time.Now().Unix()) {
+	EventListener(time.Millisecond*time.Duration(c.interval), func() {
+		if c.Timeout(time.Now().Unix()) {
 			c.Close()
 		}
 	}, c.close)

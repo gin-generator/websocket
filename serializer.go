@@ -1,21 +1,28 @@
 package websocket
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
-	"errors"
+	"google.golang.org/protobuf/proto"
 )
 
 type Serializer[T any] interface {
 	Serialize(data T) ([]byte, error)
 	Deserialize(data []byte, v *T) error
+	Data() T
 }
 
-type JSONSerializer[T any] struct{}
+type JSONSerializer[T Message] struct {
+	data T
+}
 
-func NewJSONSerializer[T any]() *JSONSerializer[T] {
-	return &JSONSerializer[T]{}
+func NewJSONSerializer[T Message](data T) *JSONSerializer[T] {
+	return &JSONSerializer[T]{
+		data: data,
+	}
+}
+
+func (j *JSONSerializer[T]) Data() T {
+	return j.data
 }
 
 func (j *JSONSerializer[T]) Serialize(data T) ([]byte, error) {
@@ -26,26 +33,29 @@ func (j *JSONSerializer[T]) Deserialize(data []byte, v *T) error {
 	return json.Unmarshal(data, v)
 }
 
-type ProtocolSerializer[T any] struct{}
+type ProtocolSerializer[T proto.Message] struct {
+	data T
+}
 
-func NewProtocolSerializer[T any]() *ProtocolSerializer[T] {
-	return &ProtocolSerializer[T]{}
+func NewProtocolSerializer[T proto.Message](data T) *ProtocolSerializer[T] {
+	return &ProtocolSerializer[T]{
+		data: data,
+	}
+}
+
+func (p *ProtocolSerializer[T]) Data() T {
+	return p.data
 }
 
 func (p *ProtocolSerializer[T]) Serialize(data T) ([]byte, error) {
-	var buf bytes.Buffer
-	err := binary.Write(&buf, binary.LittleEndian, data)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return proto.Marshal(data)
 }
 
 func (p *ProtocolSerializer[T]) Deserialize(data []byte, v *T) error {
-	buf := bytes.NewReader(data)
-	err := binary.Read(buf, binary.LittleEndian, v)
-	if err != nil {
-		return errors.New("failed to deserialize protocol data")
+	var obj T
+	if err := proto.Unmarshal(data, obj); err != nil {
+		return err
 	}
+	v = &obj
 	return nil
 }

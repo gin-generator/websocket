@@ -1,51 +1,120 @@
 package websocket
 
 import (
-	"go.uber.org/zap"
+	"errors"
+	"github.com/fatih/color"
+	"github.com/spf13/viper"
+	"path/filepath"
+	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 )
 
 var (
-	SocketManager *Manager
 	Once          sync.Once
-	Logger        *zap.Logger
+	SocketManager *Manager
+	Config        *viper.Viper
 )
 
 type Manager struct {
-	Pool      sync.Map
+	Pool      map[string]*Client
 	Register  chan *Client
 	Unset     chan *Client
-	Max       uint64
-	Broadcast chan []byte
+	Broadcast chan Send
 	Errs      chan error
-	total     uint64
-	mu        sync.Mutex
-
-	// client config
-	location                        *time.Location
-	ReadBufferSize, WriteBufferSize int
+	mu        *sync.Mutex
+	total     atomic.Uint32
 }
 
-func NewManager() {
+func NewManager(cfg string) {
+	// Initialize config
+	Config = viper.New()
+	Config.SetConfigName(filepath.Base(cfg))
+	Config.SetConfigType(strings.TrimLeft(filepath.Ext(cfg), "."))
+	Config.AddConfigPath(cfg)
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
+	Config.WatchConfig()
+
+	limit := Config.GetInt("Websocket.RegisterLimit")
+	// Initialize manager
 	Once.Do(func() {
 		SocketManager = &Manager{
-			Register:        make(chan *Client, 10),
-			Unset:           make(chan *Client, 10),
-			Broadcast:       make(chan []byte, 10),
-			Errs:            make(chan error, 10),
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			Pool:      make(map[string]*Client),
+			Register:  make(chan *Client, limit),
+			Unset:     make(chan *Client, limit),
+			Broadcast: make(chan Send, limit),
+			Errs:      make(chan error, limit),
+			mu:        new(sync.Mutex),
 		}
+		SocketManager.Scheduler()
 	})
 }
 
-func (m *Manager) SetLocation(zone string) *Manager {
-	location, err := time.LoadLocation(zone)
-	if err != nil {
-		m.Errs <- err
-		return m
+// Scheduler Start the websocket scheduler
+func (m *Manager) Scheduler() {
+	for {
+		select {
+		case client := <-m.Register:
+			m.RegisterClient(client)
+		case client := <-m.Unset:
+			m.Close(client)
+		case message := <-m.Broadcast:
+			for _, client := range m.Pool {
+				go func(c *Client, msg Send) {
+					c.Send <- msg
+				}(client, message)
+			}
+		case err := <-m.Errs:
+			color.Red("Error: %v", err)
+		}
 	}
-	m.location = location
-	return m
+}
+
+// RegisterClient Register client
+func (m *Manager) RegisterClient(client *Client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.Pool[client.Id]; !ok {
+		m.Pool[client.Id] = client
+		m.total.Add(1)
+		color.Green("Client %s registered", client.Id)
+	}
+}
+
+// Close Close client
+func (m *Manager) Close(client *Client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.Pool[client.Id]; ok {
+		client.Close()
+		delete(m.Pool, client.Id)
+		m.total.Add(^uint32(0))
+		color.Green("Client %s be cancelled", client.Id)
+	}
+}
+
+// GetClient Get client by id
+func (m *Manager) GetClient(id string) (client *Client, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if info, ok := m.Pool[id]; ok {
+		return info, nil
+	}
+	return nil, errors.New("client not found")
+}
+
+// GetAllClient Get all clients
+func (m *Manager) GetAllClient() (pool map[string]*Client) {
+	return m.Pool
+}
+
+// SendBroadcast Send broadcast message
+func (m *Manager) SendBroadcast(message Send) {
+	m.Broadcast <- message
 }

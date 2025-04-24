@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-func CreateConnect() gin.HandlerFunc {
+func Connect() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		err := Upgrade(c.Writer, c.Request)
 		if err != nil {
@@ -23,13 +23,15 @@ func CreateConnect() gin.HandlerFunc {
 // Upgrade websocket链接
 func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 
-	if SocketManager.total >= SocketManager.Max {
-		return errors.New("websocket service connections exceeded the upper limit")
+	if Config.GetBool("Websocket.EnableConnectLimit.Enable") {
+		if SocketManager.total.Load() == Config.GetUint32("Websocket.EnableConnectLimit.MaxConnections") {
+			return errors.New("websocket service connections exceeded the upper limit")
+		}
 	}
 
 	conn, err := (&websocket.Upgrader{
-		ReadBufferSize:  SocketManager.ReadBufferSize,
-		WriteBufferSize: SocketManager.WriteBufferSize,
+		ReadBufferSize:  Config.GetInt("Websocket.ReadBufferSize"),
+		WriteBufferSize: Config.GetInt("Websocket.WriteBufferSize"),
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
@@ -48,9 +50,7 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	// register client
 	SocketManager.Register <- client
 
-	go client.Read(func(client *Client, send Send) {
-		// TODO handle message
-	})
+	go client.Read()
 	go client.Write()
 	go client.Heartbeat()
 
