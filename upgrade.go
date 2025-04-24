@@ -44,6 +44,13 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	}
 
 	client := NewClient(conn)
+	go client.Read()
+	go client.Write()
+	go client.Heartbeat()
+
+	// register client
+	SocketManager.Register <- client
+
 	// first message
 	message := Message{
 		RequestId: uuid.NewV4().String(),
@@ -58,12 +65,5 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 		Protocol: websocket.TextMessage,
 		Message:  bytes,
 	}
-	// register client
-	SocketManager.Register <- client
-
-	go client.Read()
-	go client.Write()
-	go client.Heartbeat()
-
 	return nil
 }

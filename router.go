@@ -10,7 +10,10 @@ import (
 )
 
 // Handler function type
-type Handler func(client *Client, send Send) *Send
+type (
+	TextHandler  func(client *Client, message *Message)
+	ProtoHandler func(client *Client, message *m.Message)
+)
 
 var Router *CommandRouter
 
@@ -28,54 +31,80 @@ func init() {
 }
 
 type CommandRouter struct {
-	handlers map[string]Handler
-	mu       *sync.Mutex
+	textHandlers  map[string]TextHandler
+	protoHandlers map[string]ProtoHandler
+	mu            *sync.Mutex
 }
 
 func NewCommandRouter() *CommandRouter {
 	return &CommandRouter{
-		handlers: make(map[string]Handler),
-		mu:       new(sync.Mutex),
+		textHandlers:  make(map[string]TextHandler),
+		protoHandlers: make(map[string]ProtoHandler),
+		mu:            new(sync.Mutex),
 	}
 }
 
-func (r *CommandRouter) Register(command string, handler func(*Client, Send) *Send) {
+func (r *CommandRouter) RegisterText(command string, handler func(*Client, *Message)) {
 	r.mu.Lock()
-	r.handlers[command] = handler
+	r.textHandlers[command] = handler
 	r.mu.Unlock()
 }
 
-func (r *CommandRouter) Handle(client *Client, send Send) (err error) {
-	var command string
-	switch send.Protocol {
-	case websocket.TextMessage:
-		var message Message
-		err = json.Unmarshal(send.Message, &message)
-		if err != nil {
-			return
-		}
-		command = message.Command
-	case websocket.BinaryMessage:
-		var message m.Message
-		err = proto.Unmarshal(send.Message, &message)
-		if err != nil {
-			return
-		}
-		command = message.Command
-	default:
-		return errors.New("unsupported message type")
+func (r *CommandRouter) RegisterProto(command string, handler func(*Client, *m.Message)) {
+	r.mu.Lock()
+	r.protoHandlers[command] = handler
+	r.mu.Unlock()
+}
+
+func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
+	var message Message
+	err = json.Unmarshal(send.Message, &message)
+	if err != nil {
+		return
 	}
 
 	r.mu.Lock()
-	handler, ok := r.handlers[command]
+	handler, ok := r.textHandlers[message.Command]
 	r.mu.Unlock()
 	if !ok {
-		return errors.New("no handler found for command: " + command)
+		return errors.New("no handler found for command: " + message.Command)
 	}
 
-	resp := handler(client, send)
-	if resp != nil {
-		client.SendMessage(*resp)
+	handler(client, &message)
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		return
+	}
+	client.Send <- Send{
+		Protocol: websocket.TextMessage,
+		Message:  bytes,
+	}
+
+	return
+}
+
+func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
+	var message m.Message
+	err = proto.Unmarshal(send.Message, &message)
+	if err != nil {
+		return
+	}
+
+	r.mu.Lock()
+	handler, ok := r.protoHandlers[message.Command]
+	r.mu.Unlock()
+	if !ok {
+		return errors.New("no handler found for command: " + message.Command)
+	}
+
+	handler(client, &message)
+	bytes, err := proto.Marshal(&message)
+	if err != nil {
+		return
+	}
+	client.Send <- Send{
+		Protocol: websocket.BinaryMessage,
+		Message:  bytes,
 	}
 	return
 }

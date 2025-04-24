@@ -49,7 +49,7 @@ func NewManager(cfg string) {
 			Errs:     make(chan error, limit),
 			mu:       new(sync.Mutex),
 		}
-		SocketManager.scheduler()
+		go SocketManager.scheduler()
 	})
 }
 

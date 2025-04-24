@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"errors"
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
@@ -9,6 +10,7 @@ import (
 )
 
 type Client struct {
+	context.Context
 	Id        string          // unique identifier for each connection
 	Socket    *websocket.Conn // user connection
 	Send      chan Send       // send message
@@ -27,10 +29,12 @@ type Send struct {
 
 func NewClient(conn *websocket.Conn) *Client {
 	return &Client{
-		Id:     uuid.NewV4().String(),
-		Socket: conn,
-		Send:   make(chan Send, Config.GetInt("Websocket.SendLimit")),
-		close:  make(chan struct{}, 1),
+		Id:       uuid.NewV4().String(),
+		Socket:   conn,
+		Send:     make(chan Send, Config.GetInt("Websocket.SendLimit")),
+		close:    make(chan struct{}, 1),
+		timeout:  Config.GetInt64("Websocket.Timeout"),
+		interval: Config.GetInt64("Websocket.Interval"),
 	}
 }
 
@@ -41,6 +45,7 @@ func (c *Client) Read() {
 			color.Red("Client %s read error: %v", c.Id, err)
 		}
 	}()
+	c.SetLastTime(time.Now().Unix()) // set last time
 
 	var closeErr *websocket.CloseError
 	for {
@@ -50,12 +55,20 @@ func (c *Client) Read() {
 			return
 		}
 
-		err = Router.Handle(c, Send{
+		send := Send{
 			Protocol: types,
 			Message:  message,
-		})
+		}
+
+		switch types {
+		case websocket.TextMessage:
+			err = Router.TextHandle(c, send)
+		case websocket.BinaryMessage:
+			err = Router.ProtoHandle(c, send)
+		default:
+			color.Red("Client %s read error: %v", c.Id, err)
+		}
 		if err != nil {
-			color.Red("Client %s handle error: %v", c.Id, err)
 			continue
 		}
 	}
@@ -114,9 +127,10 @@ func (c *Client) Timeout(currentTime int64) bool {
 
 // Heartbeat detection
 func (c *Client) Heartbeat() {
+	// TODO debug
 	EventListener(time.Millisecond*time.Duration(c.interval), func() {
 		if c.Timeout(time.Now().Unix()) {
-			c.Close()
+			SocketManager.Unset <- c
 		}
 	}, c.close)
 }
