@@ -1,9 +1,11 @@
 package websocket
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	uuid "github.com/satori/go.uuid"
 	"net/http"
 )
 
@@ -43,9 +45,18 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 
 	client := NewClient(conn)
 	// first message
+	message := Message{
+		RequestId: uuid.NewV4().String(),
+		Command:   "connect",
+		Message:   "success",
+	}
+	bytes, err := json.Marshal(message)
+	if err != nil {
+		return
+	}
 	client.Send <- Send{
 		Protocol: websocket.TextMessage,
-		Message:  []byte("hello"),
+		Message:  bytes,
 	}
 	// register client
 	SocketManager.Register <- client

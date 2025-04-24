@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"errors"
-	"fmt"
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
@@ -30,7 +29,7 @@ func NewClient(conn *websocket.Conn) *Client {
 	return &Client{
 		Id:     uuid.NewV4().String(),
 		Socket: conn,
-		Send:   make(chan Send, 10),
+		Send:   make(chan Send, Config.GetInt("Websocket.SendLimit")),
 		close:  make(chan struct{}, 1),
 	}
 }
@@ -51,8 +50,14 @@ func (c *Client) Read() {
 			return
 		}
 
-		// TODO
-		fmt.Println(types, message)
+		err = Router.Handle(c, Send{
+			Protocol: types,
+			Message:  message,
+		})
+		if err != nil {
+			color.Red("Client %s handle error: %v", c.Id, err)
+			continue
+		}
 	}
 }
 

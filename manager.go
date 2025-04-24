@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"errors"
+	"fmt"
 	"github.com/fatih/color"
 	"github.com/spf13/viper"
 	"path/filepath"
@@ -17,13 +18,12 @@ var (
 )
 
 type Manager struct {
-	Pool      map[string]*Client
-	Register  chan *Client
-	Unset     chan *Client
-	Broadcast chan Send
-	Errs      chan error
-	mu        *sync.Mutex
-	total     atomic.Uint32
+	pool     map[string]*Client
+	Register chan *Client
+	Unset    chan *Client
+	Errs     chan error
+	mu       *sync.Mutex
+	total    atomic.Uint32
 }
 
 func NewManager(cfg string) {
@@ -31,9 +31,10 @@ func NewManager(cfg string) {
 	Config = viper.New()
 	Config.SetConfigName(filepath.Base(cfg))
 	Config.SetConfigType(strings.TrimLeft(filepath.Ext(cfg), "."))
-	Config.AddConfigPath(cfg)
-	err := viper.ReadInConfig()
+	Config.AddConfigPath(filepath.Dir(cfg))
+	err := Config.ReadInConfig()
 	if err != nil {
+		fmt.Println("Error reading config file:", err)
 		panic(err)
 	}
 	Config.WatchConfig()
@@ -42,57 +43,50 @@ func NewManager(cfg string) {
 	// Initialize manager
 	Once.Do(func() {
 		SocketManager = &Manager{
-			Pool:      make(map[string]*Client),
-			Register:  make(chan *Client, limit),
-			Unset:     make(chan *Client, limit),
-			Broadcast: make(chan Send, limit),
-			Errs:      make(chan error, limit),
-			mu:        new(sync.Mutex),
+			pool:     make(map[string]*Client),
+			Register: make(chan *Client, limit),
+			Unset:    make(chan *Client, limit),
+			Errs:     make(chan error, limit),
+			mu:       new(sync.Mutex),
 		}
-		SocketManager.Scheduler()
+		SocketManager.scheduler()
 	})
 }
 
-// Scheduler Start the websocket scheduler
-func (m *Manager) Scheduler() {
+// scheduler Start the websocket scheduler
+func (m *Manager) scheduler() {
 	for {
 		select {
 		case client := <-m.Register:
-			m.RegisterClient(client)
+			m.registerClient(client)
 		case client := <-m.Unset:
-			m.Close(client)
-		case message := <-m.Broadcast:
-			for _, client := range m.Pool {
-				go func(c *Client, msg Send) {
-					c.Send <- msg
-				}(client, message)
-			}
+			m.close(client)
 		case err := <-m.Errs:
 			color.Red("Error: %v", err)
 		}
 	}
 }
 
-// RegisterClient Register client
-func (m *Manager) RegisterClient(client *Client) {
+// registerClient Register client
+func (m *Manager) registerClient(client *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.Pool[client.Id]; !ok {
-		m.Pool[client.Id] = client
+	if _, ok := m.pool[client.Id]; !ok {
+		m.pool[client.Id] = client
 		m.total.Add(1)
 		color.Green("Client %s registered", client.Id)
 	}
 }
 
-// Close Close client
-func (m *Manager) Close(client *Client) {
+// close client
+func (m *Manager) close(client *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.Pool[client.Id]; ok {
+	if _, ok := m.pool[client.Id]; ok {
 		client.Close()
-		delete(m.Pool, client.Id)
+		delete(m.pool, client.Id)
 		m.total.Add(^uint32(0))
 		color.Green("Client %s be cancelled", client.Id)
 	}
@@ -103,7 +97,7 @@ func (m *Manager) GetClient(id string) (client *Client, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if info, ok := m.Pool[id]; ok {
+	if info, ok := m.pool[id]; ok {
 		return info, nil
 	}
 	return nil, errors.New("client not found")
@@ -111,10 +105,14 @@ func (m *Manager) GetClient(id string) (client *Client, err error) {
 
 // GetAllClient Get all clients
 func (m *Manager) GetAllClient() (pool map[string]*Client) {
-	return m.Pool
+	return m.pool
 }
 
 // SendBroadcast Send broadcast message
 func (m *Manager) SendBroadcast(message Send) {
-	m.Broadcast <- message
+	for _, client := range m.pool {
+		go func(c *Client, msg Send) {
+			c.Send <- msg
+		}(client, message)
+	}
 }
