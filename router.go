@@ -21,9 +21,9 @@ var Router *CommandRouter
 type Message struct {
 	RequestId string `json:"request_id" validate:"required"`
 	Command   string `json:"command" validate:"required"`
-	Code      int32  `json:"code"`
-	Message   string `json:"message"`
-	Data      []byte `json:"data"`
+	Code      int32  `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Data      []byte `json:"data,omitempty"`
 }
 
 func init() {
@@ -77,6 +77,13 @@ func (r *CommandRouter) TextHandle(client *Context, send Send) (err error) {
 	}
 
 	// validator
+	err = ValidateStructWithOutCtx(message)
+	if err != nil {
+		message.Code = http.StatusBadRequest
+		message.Message = err.Error()
+		r.textResponse(client, &message)
+		return
+	}
 
 	handler(client, &message)
 	r.textResponse(client, &message)
@@ -105,11 +112,35 @@ func (r *CommandRouter) ProtoHandle(client *Context, send Send) (err error) {
 	handler, ok := r.protoHandlers[message.Command]
 	r.protoMu.Unlock()
 	if !ok {
+		message.Message = "no handler found for command: " + message.Command
+		message.Code = http.StatusBadRequest
+		r.protoResponse(client, &message)
 		return errors.New("no handler found for command: " + message.Command)
 	}
 
+	// validator
+	msg := Message{
+		RequestId: message.RequestId,
+		Command:   message.Command,
+		Code:      message.Code,
+		Message:   message.Message,
+		Data:      message.Data,
+	}
+	err = ValidateStructWithOutCtx(msg)
+	if err != nil {
+		message.Code = http.StatusBadRequest
+		message.Message = err.Error()
+		r.protoResponse(client, &message)
+		return
+	}
+
 	handler(client, &message)
-	bytes, err := proto.Marshal(&message)
+	r.protoResponse(client, &message)
+	return
+}
+
+func (r *CommandRouter) protoResponse(client *Context, message *m.Message) {
+	bytes, err := proto.Marshal(message)
 	if err != nil {
 		return
 	}
@@ -117,5 +148,4 @@ func (r *CommandRouter) ProtoHandle(client *Context, send Send) (err error) {
 		Protocol: websocket.BinaryMessage,
 		Message:  bytes,
 	}
-	return
 }
