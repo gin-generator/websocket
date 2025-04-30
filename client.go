@@ -20,6 +20,8 @@ type Client struct {
 	lastTime  int64           // last heartbeat time
 	timeout   int64           // heartbeat timeout
 	interval  int64           // heartbeat interval
+	values    map[any]any     // context values
+	errs      chan error
 }
 
 type Send struct {
@@ -35,6 +37,8 @@ func NewClient(conn *websocket.Conn) *Client {
 		close:    make(chan struct{}, 1),
 		timeout:  Config.GetInt64("Websocket.Timeout"),
 		interval: Config.GetInt64("Websocket.Interval"),
+		values:   make(map[any]any),
+		errs:     make(chan error, Config.GetInt("Websocket.SendLimit")),
 	}
 }
 
@@ -51,7 +55,7 @@ func (c *Client) Read() {
 	for {
 		types, message, err := c.Socket.ReadMessage()
 		if err != nil && errors.As(err, &closeErr) {
-			c.Close()
+			SocketManager.Unset <- c
 			return
 		}
 
@@ -99,14 +103,17 @@ func (c *Client) SendMessage(message Send) {
 
 // Close logout
 func (c *Client) Close() {
-	defer close(c.close)
-	c.close <- struct{}{}
-
 	select {
 	case <-c.Send:
 	default:
 		close(c.Send)
 		c.SendClose = true
+	}
+
+	select {
+	case <-c.close:
+	default:
+		close(c.close)
 	}
 
 	err := c.Socket.Close()
@@ -127,10 +134,43 @@ func (c *Client) Timeout(currentTime int64) bool {
 
 // Heartbeat detection
 func (c *Client) Heartbeat() {
-	// TODO debug
-	EventListener(time.Millisecond*time.Duration(c.interval), func() {
-		if c.Timeout(time.Now().Unix()) {
-			SocketManager.Unset <- c
+	ticker := time.NewTicker(time.Millisecond * time.Duration(c.interval))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// 每当 Ticker 触发时，执行判断
+			if c.Timeout(time.Now().Unix()) {
+				SocketManager.Unset <- c
+			}
+		case <-c.close:
+			// 收到停止信号，退出监听
+			return
 		}
-	}, c.close)
+	}
+}
+
+// Deadline SetDeadline Set the deadline
+func (c *Client) Deadline() (deadline time.Time, ok bool) {
+	return time.Time{}, false
+}
+
+// Done returns a channel that is closed when the context is done.
+func (c *Client) Done() <-chan struct{} {
+	return c.close
+}
+
+// Err returns a non-nil error value after the context is done.
+func (c *Client) Err() error {
+	return <-c.errs
+}
+
+// Value returns the value associated with key in the context, if any.
+func (c *Client) Value(key any) any {
+	value, ok := c.values[key]
+	if !ok {
+		return nil
+	}
+	return value
 }

@@ -17,17 +17,21 @@ func main() {
 	// Start websocket manager
 	websocket.NewManager(fmt.Sprintf("%s/example/env.yaml", pwd))
 
+	// Start api server
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	// Upgrade websocket
 	r.GET("/ws", websocket.Connect())
 
 	// Register external trigger route
 	websocket.Router.RegisterText("ping", TextPing)
 
-	color.Green("Websocket server start: %s:%s",
-		websocket.Config.GetString("Websocket.Host"), websocket.Config.GetString("Websocket.Port"))
-	err = r.Run(websocket.Config.GetString("Websocket.Host") + ":" + websocket.Config.GetString("Websocket.Port"))
+	// Start the api server
+	color.Green("API server start: %s:%s",
+		websocket.Config.GetString("Host"), websocket.Config.GetString("Port"))
+	err = r.Run(websocket.Config.GetString("Host") + ":" + websocket.Config.GetString("Port"))
 	if err != nil {
 		panic(err)
 	}
