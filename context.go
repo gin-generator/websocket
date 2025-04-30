@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type Client struct {
+type Context struct {
 	context.Context
 	Id        string          // unique identifier for each connection
 	Socket    *websocket.Conn // user connection
@@ -29,8 +29,8 @@ type Send struct {
 	Message  []byte
 }
 
-func NewClient(conn *websocket.Conn) *Client {
-	return &Client{
+func NewContext(conn *websocket.Conn) *Context {
+	return &Context{
 		Id:       uuid.NewV4().String(),
 		Socket:   conn,
 		Send:     make(chan Send, Config.GetInt("Websocket.SendLimit")),
@@ -43,10 +43,11 @@ func NewClient(conn *websocket.Conn) *Client {
 }
 
 // Read message
-func (c *Client) Read() {
+func (c *Context) Read() {
 	defer func() {
+		SocketManager.Unset <- c
 		if err := recover(); err != nil {
-			color.Red("Client %s read error: %v", c.Id, err)
+			color.Red("Context %s read error: %v", c.Id, err)
 		}
 	}()
 	c.SetLastTime(time.Now().Unix()) // set last time
@@ -55,7 +56,6 @@ func (c *Client) Read() {
 	for {
 		types, message, err := c.Socket.ReadMessage()
 		if err != nil && errors.As(err, &closeErr) {
-			SocketManager.Unset <- c
 			return
 		}
 
@@ -69,8 +69,8 @@ func (c *Client) Read() {
 			err = Router.TextHandle(c, send)
 		case websocket.BinaryMessage:
 			err = Router.ProtoHandle(c, send)
-		default:
-			color.Red("Client %s read error: %v", c.Id, err)
+		case -1: // No ping frames were detected
+			return
 		}
 		if err != nil {
 			continue
@@ -79,10 +79,10 @@ func (c *Client) Read() {
 }
 
 // Write Send message
-func (c *Client) Write() {
+func (c *Context) Write() {
 	defer func() {
 		if err := recover(); err != nil {
-			color.Red("Client %s write error: %v", c.Id, err)
+			color.Red("Context %s write error: %v", c.Id, err)
 		}
 	}()
 
@@ -95,14 +95,19 @@ func (c *Client) Write() {
 }
 
 // SendMessage Send message
-func (c *Client) SendMessage(message Send) {
-	if !c.SendClose {
-		c.Send <- message
+func (c *Context) SendMessage(message Send) {
+	select {
+	case <-c.close:
+		return
+	default:
+		if !c.SendClose {
+			c.Send <- message
+		}
 	}
 }
 
 // Close logout
-func (c *Client) Close() {
+func (c *Context) Close() {
 	select {
 	case <-c.Send:
 	default:
@@ -123,54 +128,57 @@ func (c *Client) Close() {
 }
 
 // SetLastTime Set the last time
-func (c *Client) SetLastTime(currentTime int64) {
+func (c *Context) SetLastTime(currentTime int64) {
 	c.lastTime = currentTime
 }
 
 // Timeout or not
-func (c *Client) Timeout(currentTime int64) bool {
+func (c *Context) Timeout(currentTime int64) bool {
 	return c.lastTime+c.timeout <= currentTime
 }
 
 // Heartbeat detection
-func (c *Client) Heartbeat() {
+func (c *Context) Heartbeat() {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(c.interval))
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			// 每当 Ticker 触发时，执行判断
 			if c.Timeout(time.Now().Unix()) {
 				SocketManager.Unset <- c
 			}
 		case <-c.close:
-			// 收到停止信号，退出监听
 			return
 		}
 	}
 }
 
 // Deadline SetDeadline Set the deadline
-func (c *Client) Deadline() (deadline time.Time, ok bool) {
+func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
 // Done returns a channel that is closed when the context is done.
-func (c *Client) Done() <-chan struct{} {
+func (c *Context) Done() <-chan struct{} {
 	return c.close
 }
 
 // Err returns a non-nil error value after the context is done.
-func (c *Client) Err() error {
+func (c *Context) Err() error {
 	return <-c.errs
 }
 
 // Value returns the value associated with key in the context, if any.
-func (c *Client) Value(key any) any {
+func (c *Context) Value(key any) any {
 	value, ok := c.values[key]
 	if !ok {
 		return nil
 	}
 	return value
+}
+
+// SetValue sets the value associated with key in the context.
+func (c *Context) SetValue(key, value any) {
+	c.values[key] = value
 }

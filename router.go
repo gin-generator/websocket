@@ -5,21 +5,22 @@ import (
 	"errors"
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
+	"net/http"
 	"sync"
 	m "websocket/pb/message"
 )
 
 // Handler function type
 type (
-	TextHandler  func(client *Client, message *Message)
-	ProtoHandler func(client *Client, message *m.Message)
+	TextHandler  func(client *Context, message *Message)
+	ProtoHandler func(client *Context, message *m.Message)
 )
 
 var Router *CommandRouter
 
 type Message struct {
-	RequestId string `json:"request_id"`
-	Command   string `json:"command"`
+	RequestId string `json:"request_id" validate:"required"`
+	Command   string `json:"command" validate:"required"`
 	Code      int32  `json:"code"`
 	Message   string `json:"message"`
 	Data      []byte `json:"data"`
@@ -33,44 +34,56 @@ func init() {
 type CommandRouter struct {
 	textHandlers  map[string]TextHandler
 	protoHandlers map[string]ProtoHandler
-	mu            *sync.Mutex
+	textMu        *sync.Mutex
+	protoMu       *sync.Mutex
 }
 
 func NewCommandRouter() *CommandRouter {
 	return &CommandRouter{
 		textHandlers:  make(map[string]TextHandler),
 		protoHandlers: make(map[string]ProtoHandler),
-		mu:            new(sync.Mutex),
+		textMu:        new(sync.Mutex),
+		protoMu:       new(sync.Mutex),
 	}
 }
 
-func (r *CommandRouter) RegisterText(command string, handler func(*Client, *Message)) {
-	r.mu.Lock()
+func (r *CommandRouter) RegisterText(command string, handler func(*Context, *Message)) {
+	r.textMu.Lock()
 	r.textHandlers[command] = handler
-	r.mu.Unlock()
+	r.textMu.Unlock()
 }
 
-func (r *CommandRouter) RegisterProto(command string, handler func(*Client, *m.Message)) {
-	r.mu.Lock()
+func (r *CommandRouter) RegisterProto(command string, handler func(*Context, *m.Message)) {
+	r.protoMu.Lock()
 	r.protoHandlers[command] = handler
-	r.mu.Unlock()
+	r.protoMu.Unlock()
 }
 
-func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
+func (r *CommandRouter) TextHandle(client *Context, send Send) (err error) {
 	var message Message
 	err = json.Unmarshal(send.Message, &message)
 	if err != nil {
 		return
 	}
 
-	r.mu.Lock()
+	r.textMu.Lock()
 	handler, ok := r.textHandlers[message.Command]
-	r.mu.Unlock()
+	r.textMu.Unlock()
 	if !ok {
+		message.Message = "no handler found for command: " + message.Command
+		message.Code = http.StatusBadRequest
+		r.textResponse(client, &message)
 		return errors.New("no handler found for command: " + message.Command)
 	}
 
+	// validator
+
 	handler(client, &message)
+	r.textResponse(client, &message)
+	return
+}
+
+func (r *CommandRouter) textResponse(client *Context, message *Message) {
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		return
@@ -79,20 +92,18 @@ func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
 		Protocol: websocket.TextMessage,
 		Message:  bytes,
 	}
-
-	return
 }
 
-func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
+func (r *CommandRouter) ProtoHandle(client *Context, send Send) (err error) {
 	var message m.Message
 	err = proto.Unmarshal(send.Message, &message)
 	if err != nil {
 		return
 	}
 
-	r.mu.Lock()
+	r.protoMu.Lock()
 	handler, ok := r.protoHandlers[message.Command]
-	r.mu.Unlock()
+	r.protoMu.Unlock()
 	if !ok {
 		return errors.New("no handler found for command: " + message.Command)
 	}

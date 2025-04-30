@@ -18,9 +18,9 @@ var (
 )
 
 type Manager struct {
-	pool     map[string]*Client
-	Register chan *Client
-	Unset    chan *Client
+	pool     map[string]*Context
+	Register chan *Context
+	Unset    chan *Context
 	Errs     chan error
 	mu       *sync.Mutex
 	total    atomic.Uint32
@@ -43,9 +43,9 @@ func NewManager(cfg string) {
 	// Initialize manager
 	Once.Do(func() {
 		SocketManager = &Manager{
-			pool:     make(map[string]*Client),
-			Register: make(chan *Client, limit),
-			Unset:    make(chan *Client, limit),
+			pool:     make(map[string]*Context),
+			Register: make(chan *Context, limit),
+			Unset:    make(chan *Context, limit),
 			Errs:     make(chan error, limit),
 			mu:       new(sync.Mutex),
 		}
@@ -68,19 +68,19 @@ func (m *Manager) scheduler() {
 }
 
 // registerClient Register client
-func (m *Manager) registerClient(client *Client) {
+func (m *Manager) registerClient(client *Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if _, ok := m.pool[client.Id]; !ok {
 		m.pool[client.Id] = client
 		m.total.Add(1)
-		color.Green("Client %s registered", client.Id)
+		color.Green("Context %s registered", client.Id)
 	}
 }
 
 // close client
-func (m *Manager) close(client *Client) {
+func (m *Manager) close(client *Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -88,12 +88,12 @@ func (m *Manager) close(client *Client) {
 		client.Close()
 		delete(m.pool, client.Id)
 		m.total.Add(^uint32(0))
-		color.Green("Client %s be cancelled", client.Id)
+		color.Green("Context %s be cancelled", client.Id)
 	}
 }
 
 // GetClient Get client by id
-func (m *Manager) GetClient(id string) (client *Client, err error) {
+func (m *Manager) GetClient(id string) (client *Context, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -104,14 +104,14 @@ func (m *Manager) GetClient(id string) (client *Client, err error) {
 }
 
 // GetAllClient Get all clients
-func (m *Manager) GetAllClient() (pool map[string]*Client) {
+func (m *Manager) GetAllClient() (pool map[string]*Context) {
 	return m.pool
 }
 
 // SendBroadcast Send broadcast message
 func (m *Manager) SendBroadcast(message Send) {
 	for _, client := range m.pool {
-		go func(c *Client, msg Send) {
+		go func(c *Context, msg Send) {
 			c.Send <- msg
 		}(client, message)
 	}

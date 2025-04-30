@@ -43,7 +43,7 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 		return
 	}
 
-	client := NewClient(conn)
+	client := NewContext(conn)
 	go client.Read()
 	go client.Write()
 	go client.Heartbeat()

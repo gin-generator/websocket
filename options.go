@@ -1,11 +1,11 @@
 package websocket
 
 type Option interface {
-	apply(*Client)
+	apply(*Context)
 }
 
-type optionFunc func(*Client)
+type optionFunc func(*Context)
 
-func (f optionFunc) apply(client *Client) {
+func (f optionFunc) apply(client *Context) {
 	f(client)
 }
