@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/gin-generator/websocket"
 	"github.com/gin-gonic/gin"
 	"os"
-	"websocket"
 )
 
 func main() {
