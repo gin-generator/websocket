@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	m "github.com/gin-generator/websocket"
 	"github.com/gorilla/websocket"
 	uuid "github.com/satori/go.uuid"
 	"testing"
 	"time"
-	m "websocket"
 )
 
 func TestTextPing(t *testing.T) {

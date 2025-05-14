@@ -3,11 +3,11 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
+	m "github.com/gin-generator/websocket/pb/message"
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
 	"net/http"
 	"sync"
-	m "websocket/pb/message"
 )
 
 // Handler function type
