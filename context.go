@@ -50,13 +50,16 @@ func (c *Context) Read() {
 			color.Red("Context %s read error: %v", c.Id, err)
 		}
 	}()
-	c.SetLastTime(time.Now().Unix()) // set last time
 
 	var closeErr *websocket.CloseError
 	for {
 		types, message, err := c.Socket.ReadMessage()
 		if err != nil && errors.As(err, &closeErr) {
 			return
+		}
+
+		if message == nil {
+			c.SetLastTime(time.Now().Unix()) // set last time
 		}
 
 		send := Send{
