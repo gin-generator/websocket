@@ -11,7 +11,7 @@ type Demo struct {
 	Name string `json:"name"`
 }
 
-func TextPing(ctx *websocket.Context, message *websocket.Message) {
+func TextPing(ctx *websocket.Client, message *websocket.Message) {
 	var params Demo
 	err := json.Unmarshal(message.Data, &params)
 	if err != nil {

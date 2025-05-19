@@ -5,13 +5,14 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 	"net/http"
 )
 
 func Connect() gin.HandlerFunc {
+	// TODO 初始化管理器
 	return func(c *gin.Context) {
-		err := Upgrade(c.Writer, c.Request)
+		err := upgrade(c.Writer, c.Request)
 		if err != nil {
 			c.Writer.WriteHeader(http.StatusInternalServerError)
 			_, err = c.Writer.Write([]byte(err.Error()))
@@ -22,18 +23,18 @@ func Connect() gin.HandlerFunc {
 	}
 }
 
-// Upgrade websocket链接
-func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
+// upgrade websocket connection
+func upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 
-	if Config.GetBool("Websocket.EnableConnectLimit.Enable") {
-		if SocketManager.total.Load() == Config.GetUint32("Websocket.EnableConnectLimit.MaxConnections") {
+	if Cfg.GetBool("Websocket.EnableConnectLimit.Enable") {
+		if SocketManager.total.Load() == Cfg.GetUint32("Websocket.EnableConnectLimit.MaxConnections") {
 			return errors.New("websocket service connections exceeded the upper limit")
 		}
 	}
 
 	conn, err := (&websocket.Upgrader{
-		ReadBufferSize:  Config.GetInt("Websocket.ReadBufferSize"),
-		WriteBufferSize: Config.GetInt("Websocket.WriteBufferSize"),
+		ReadBufferSize:  Cfg.GetInt("Websocket.ReadBufferSize"),
+		WriteBufferSize: Cfg.GetInt("Websocket.WriteBufferSize"),
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
@@ -43,7 +44,7 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 		return
 	}
 
-	client := NewContext(conn)
+	client := newClient(conn)
 	go client.Read()
 	go client.Write()
 	go client.Heartbeat()
@@ -61,7 +62,7 @@ func Upgrade(w http.ResponseWriter, req *http.Request) (err error) {
 	if err != nil {
 		return
 	}
-	client.Send <- Send{
+	client.send <- Send{
 		Protocol: websocket.TextMessage,
 		Message:  bytes,
 	}

@@ -12,8 +12,8 @@ import (
 
 // Handler function type
 type (
-	TextHandler  func(client *Context, message *Message)
-	ProtoHandler func(client *Context, message *m.Message)
+	TextHandler  func(client *Client, message *Message)
+	ProtoHandler func(client *Client, message *m.Message)
 )
 
 var Router *CommandRouter
@@ -47,19 +47,19 @@ func NewCommandRouter() *CommandRouter {
 	}
 }
 
-func (r *CommandRouter) RegisterText(command string, handler func(*Context, *Message)) {
+func (r *CommandRouter) RegisterText(command string, handler func(*Client, *Message)) {
 	r.textMu.Lock()
 	r.textHandlers[command] = handler
 	r.textMu.Unlock()
 }
 
-func (r *CommandRouter) RegisterProto(command string, handler func(*Context, *m.Message)) {
+func (r *CommandRouter) RegisterProto(command string, handler func(*Client, *m.Message)) {
 	r.protoMu.Lock()
 	r.protoHandlers[command] = handler
 	r.protoMu.Unlock()
 }
 
-func (r *CommandRouter) TextHandle(client *Context, send Send) (err error) {
+func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
 	var message Message
 	err = json.Unmarshal(send.Message, &message)
 	if err != nil {
@@ -90,18 +90,18 @@ func (r *CommandRouter) TextHandle(client *Context, send Send) (err error) {
 	return
 }
 
-func (r *CommandRouter) textResponse(client *Context, message *Message) {
+func (r *CommandRouter) textResponse(client *Client, message *Message) {
 	bytes, err := json.Marshal(message)
 	if err != nil {
 		return
 	}
-	client.Send <- Send{
+	client.send <- Send{
 		Protocol: websocket.TextMessage,
 		Message:  bytes,
 	}
 }
 
-func (r *CommandRouter) ProtoHandle(client *Context, send Send) (err error) {
+func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
 	var message m.Message
 	err = proto.Unmarshal(send.Message, &message)
 	if err != nil {
@@ -139,12 +139,12 @@ func (r *CommandRouter) ProtoHandle(client *Context, send Send) (err error) {
 	return
 }
 
-func (r *CommandRouter) protoResponse(client *Context, message *m.Message) {
+func (r *CommandRouter) protoResponse(client *Client, message *m.Message) {
 	bytes, err := proto.Marshal(message)
 	if err != nil {
 		return
 	}
-	client.Send <- Send{
+	client.send <- Send{
 		Protocol: websocket.BinaryMessage,
 		Message:  bytes,
 	}

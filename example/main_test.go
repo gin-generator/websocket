@@ -31,7 +31,7 @@ func TestTextPing(t *testing.T) {
 		t.Fatalf("Failed to marshal message: %v", err)
 	}
 
-	// Send the message
+	// send the message
 	err = conn.WriteMessage(websocket.TextMessage, messageBytes)
 	if err != nil {
 		t.Fatalf("Failed to send message: %v", err)

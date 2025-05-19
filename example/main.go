@@ -22,7 +22,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// Upgrade websocket
+	// upgrade websocket
 	r.GET("/ws", websocket.Connect())
 
 	// Register external trigger route
@@ -30,8 +30,8 @@ func main() {
 
 	// Start the api server
 	color.Green("API server start: %s:%s",
-		websocket.Config.GetString("Host"), websocket.Config.GetString("Port"))
-	err = r.Run(websocket.Config.GetString("Host") + ":" + websocket.Config.GetString("Port"))
+		websocket.Cfg.GetString("Host"), websocket.Cfg.GetString("Port"))
+	err = r.Run(websocket.Cfg.GetString("Host") + ":" + websocket.Cfg.GetString("Port"))
 	if err != nil {
 		panic(err)
 	}

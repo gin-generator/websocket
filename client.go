@@ -9,12 +9,15 @@ import (
 	"time"
 )
 
-type Context struct {
+type Context interface {
 	context.Context
-	Id        string          // unique identifier for each connection
-	Socket    *websocket.Conn // user connection
-	Send      chan Send       // send message
-	SendClose bool            // send channel is close
+}
+
+type Client struct {
+	id        string          // unique identifier for each connection
+	socket    *websocket.Conn // user connection
+	send      chan Send       // send message
+	sendClose bool            // send channel is close
 	close     chan struct{}   // close channel
 	firstTime int64           // first connection time
 	lastTime  int64           // last heartbeat time
@@ -29,37 +32,37 @@ type Send struct {
 	Message  []byte
 }
 
-func NewContext(conn *websocket.Conn) *Context {
-	return &Context{
-		Id:       uuid.NewV4().String(),
-		Socket:   conn,
-		Send:     make(chan Send, Config.GetInt("Websocket.SendLimit")),
+func newClient(conn *websocket.Conn) *Client {
+	return &Client{
+		id:       uuid.NewV4().String(),
+		socket:   conn,
+		send:     make(chan Send, Cfg.GetInt("Websocket.SendLimit")),
 		close:    make(chan struct{}, 1),
-		timeout:  Config.GetInt64("Websocket.Timeout"),
-		interval: Config.GetInt64("Websocket.Interval"),
+		timeout:  Cfg.GetInt64("Websocket.Timeout"),
+		interval: Cfg.GetInt64("Websocket.Interval"),
 		values:   make(map[any]any),
-		errs:     make(chan error, Config.GetInt("Websocket.SendLimit")),
+		errs:     make(chan error, Cfg.GetInt("Websocket.SendLimit")),
 	}
 }
 
 // Read message
-func (c *Context) Read() {
+func (c *Client) Read() {
 	defer func() {
 		SocketManager.Unset <- c
 		if err := recover(); err != nil {
-			color.Red("Context %s read error: %v", c.Id, err)
+			color.Red("Client %s read error: %v", c.id, err)
 		}
 	}()
 
 	var closeErr *websocket.CloseError
 	for {
-		types, message, err := c.Socket.ReadMessage()
+		types, message, err := c.socket.ReadMessage()
 		if err != nil && errors.As(err, &closeErr) {
 			return
 		}
 
 		if message == nil {
-			c.SetLastTime(time.Now().Unix()) // set last time
+			c.setLastTime(time.Now().Unix()) // set last time
 		}
 
 		send := Send{
@@ -82,40 +85,40 @@ func (c *Context) Read() {
 }
 
 // Write Send message
-func (c *Context) Write() {
+func (c *Client) Write() {
 	defer func() {
 		if err := recover(); err != nil {
-			color.Red("Context %s write error: %v", c.Id, err)
+			color.Red("Client %s write error: %v", c.id, err)
 		}
 	}()
 
 	var closeErr *websocket.CloseError
-	for v := range c.Send {
-		if err := c.Socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
+	for v := range c.send {
+		if err := c.socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
 			return
 		}
 	}
 }
 
 // SendMessage Send message
-func (c *Context) SendMessage(message Send) {
+func (c *Client) SendMessage(message Send) {
 	select {
 	case <-c.close:
 		return
 	default:
-		if !c.SendClose {
-			c.Send <- message
+		if !c.sendClose {
+			c.send <- message
 		}
 	}
 }
 
 // Close logout
-func (c *Context) Close() {
+func (c *Client) Close() {
 	select {
-	case <-c.Send:
+	case <-c.send:
 	default:
-		close(c.Send)
-		c.SendClose = true
+		close(c.send)
+		c.sendClose = true
 	}
 
 	select {
@@ -124,31 +127,31 @@ func (c *Context) Close() {
 		close(c.close)
 	}
 
-	err := c.Socket.Close()
+	err := c.socket.Close()
 	if err != nil {
 		SocketManager.Errs <- err
 	}
 }
 
-// SetLastTime Set the last time
-func (c *Context) SetLastTime(currentTime int64) {
+// setLastTime Set the last time
+func (c *Client) setLastTime(currentTime int64) {
 	c.lastTime = currentTime
 }
 
-// Timeout or not
-func (c *Context) Timeout(currentTime int64) bool {
+// isTimeout or not
+func (c *Client) isTimeout(currentTime int64) bool {
 	return c.lastTime+c.timeout <= currentTime
 }
 
 // Heartbeat detection
-func (c *Context) Heartbeat() {
+func (c *Client) Heartbeat() {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(c.interval))
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if c.Timeout(time.Now().Unix()) {
+			if c.isTimeout(time.Now().Unix()) {
 				SocketManager.Unset <- c
 			}
 		case <-c.close:
@@ -158,22 +161,22 @@ func (c *Context) Heartbeat() {
 }
 
 // Deadline SetDeadline Set the deadline
-func (c *Context) Deadline() (deadline time.Time, ok bool) {
+func (c *Client) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
 // Done returns a channel that is closed when the context is done.
-func (c *Context) Done() <-chan struct{} {
+func (c *Client) Done() <-chan struct{} {
 	return c.close
 }
 
 // Err returns a non-nil error value after the context is done.
-func (c *Context) Err() error {
+func (c *Client) Err() error {
 	return <-c.errs
 }
 
 // Value returns the value associated with key in the context, if any.
-func (c *Context) Value(key any) any {
+func (c *Client) Value(key any) any {
 	value, ok := c.values[key]
 	if !ok {
 		return nil
@@ -182,6 +185,6 @@ func (c *Context) Value(key any) any {
 }
 
 // SetValue sets the value associated with key in the context.
-func (c *Context) SetValue(key, value any) {
+func (c *Client) SetValue(key, value any) {
 	c.values[key] = value
 }
