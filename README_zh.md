@@ -5,7 +5,8 @@
 
 [English](README.md)
 
-一个轻量级的 Go WebSocket 管理器，基于 `gin-gonic` 和 `gorilla/websocket` 构建，可以像写API一样编写websocket指令。该库提供了强大的 WebSocket 服务器实现，支持连接管理、消息路由和验证等功能。
+一个轻量级的 Go WebSocket 管理器，基于 `gin-gonic` 和 `gorilla/websocket` 构建，可以像写API一样编写websocket指令。该库提供了强大的
+WebSocket 服务器实现，支持连接管理、消息路由和验证等功能。
 
 ## 功能
 
@@ -22,3 +23,9 @@
 ```bash
 go get -u github.com/gin-generator/websocket
 ```
+
+## 例子
+
+你可以在这个 [example](example) 文件夹找到示例。
+
+- [Basic WebSocket Server](example/logic.go): 演示如何处理WebSocket连接和消息。
