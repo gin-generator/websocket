@@ -3,6 +3,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/yourusername/yourrepository.svg)](https://pkg.go.dev/github.com/gin-generator/websocket)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+[中文](README_zh.md)
+
 A lightweight WebSocket manager for Go, built with `gin-gonic` and `gorilla/websocket`. This library provides a robust WebSocket server implementation with features like connection management, message routing, and validation.
 
 ## Features
