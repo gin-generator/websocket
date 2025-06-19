@@ -3,54 +3,45 @@ package websocket
 import (
 	"errors"
 	"fmt"
-	"github.com/fatih/color"
-	"github.com/spf13/viper"
-	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
 
+const (
+	RegisterLimit   = 1000
+	ReadBufferSize  = 4096
+	WriteBufferSize = 4096
+	MaxConnections  = 100000
+)
+
 var (
 	Once          sync.Once
-	SocketManager *Manager
-	Cfg           *viper.Viper
+	socketManager *Manager
 )
 
 type Manager struct {
-	pool     map[string]*Client
-	Register chan *Client
-	Unset    chan *Client
-	Errs     chan error
-	mu       *sync.Mutex
-	total    atomic.Uint32
+	pool            map[string]*Client
+	Register        chan *Client
+	Unset           chan *Client
+	MaxConn         uint32
+	ReadBufferSize  int
+	WriteBufferSize int
+	Errs            chan error
+	mu              *sync.Mutex
+	total           atomic.Uint32
 }
 
-func NewManager(cfg string) {
-	// Initialize config
-	Cfg = viper.New()
-	Cfg.SetConfigName(filepath.Base(cfg))
-	Cfg.SetConfigType(strings.TrimLeft(filepath.Ext(cfg), "."))
-	Cfg.AddConfigPath(filepath.Dir(cfg))
-	err := Cfg.ReadInConfig()
-	if err != nil {
-		fmt.Println("Error reading config file:", err)
-		panic(err)
-	}
-	Cfg.WatchConfig()
-
-	limit := Cfg.GetInt("Websocket.RegisterLimit")
-	// Initialize manager
+func newDefaultManager() *Manager {
 	Once.Do(func() {
-		SocketManager = &Manager{
+		socketManager = &Manager{
 			pool:     make(map[string]*Client),
-			Register: make(chan *Client, limit),
-			Unset:    make(chan *Client, limit),
-			Errs:     make(chan error, limit),
+			Register: make(chan *Client, RegisterLimit),
+			Unset:    make(chan *Client, RegisterLimit),
+			Errs:     make(chan error, RegisterLimit),
 			mu:       new(sync.Mutex),
 		}
-		go SocketManager.scheduler()
 	})
+	return socketManager
 }
 
 // scheduler Start the websocket scheduler
@@ -62,7 +53,7 @@ func (m *Manager) scheduler() {
 		case client := <-m.Unset:
 			m.close(client)
 		case err := <-m.Errs:
-			color.Red("Error: %v", err)
+			fmt.Println("Error:", err)
 		}
 	}
 }
@@ -75,7 +66,7 @@ func (m *Manager) registerClient(client *Client) {
 	if _, ok := m.pool[client.id]; !ok {
 		m.pool[client.id] = client
 		m.total.Add(1)
-		color.Green("Client %s registered", client.id)
+		fmt.Println("Client", client.id, "registered successfully")
 	}
 }
 
@@ -88,7 +79,7 @@ func (m *Manager) close(client *Client) {
 		client.Close()
 		delete(m.pool, client.id)
 		m.total.Add(^uint32(0))
-		color.Green("Client %s be cancelled", client.id)
+		fmt.Println("Client", client.id, "closed successfully")
 	}
 }
 

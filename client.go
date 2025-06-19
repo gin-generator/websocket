@@ -9,11 +9,15 @@ import (
 	"time"
 )
 
-type Context interface {
-	context.Context
-}
+const (
+	SendLimit = 100
+	BreakTime = 600  // Heartbeat breakTime in seconds
+	Interval  = 1000 // Heartbeat interval in milliseconds
+)
 
 type Client struct {
+	context.Context
+
 	id        string          // unique identifier for each connection
 	socket    *websocket.Conn // user connection
 	send      chan Send       // send message
@@ -21,7 +25,7 @@ type Client struct {
 	close     chan struct{}   // close channel
 	firstTime int64           // first connection time
 	lastTime  int64           // last heartbeat time
-	timeout   int64           // heartbeat timeout
+	breakTime int64           // heartbeat breakTime
 	interval  int64           // heartbeat interval
 	values    map[any]any     // context values
 	errs      chan error
@@ -32,23 +36,27 @@ type Send struct {
 	Message  []byte
 }
 
-func newClient(conn *websocket.Conn) *Client {
+func newDefaultClient(conn *websocket.Conn) *Client {
+	times := time.Now().Unix()
 	return &Client{
-		id:       uuid.NewV4().String(),
-		socket:   conn,
-		send:     make(chan Send, Cfg.GetInt("Websocket.SendLimit")),
-		close:    make(chan struct{}, 1),
-		timeout:  Cfg.GetInt64("Websocket.Timeout"),
-		interval: Cfg.GetInt64("Websocket.Interval"),
-		values:   make(map[any]any),
-		errs:     make(chan error, Cfg.GetInt("Websocket.SendLimit")),
+		id:        uuid.NewV4().String(),
+		socket:    conn,
+		send:      make(chan Send, SendLimit),
+		sendClose: false,
+		close:     make(chan struct{}, 1),
+		firstTime: times,
+		lastTime:  times,
+		breakTime: BreakTime,
+		interval:  Interval,
+		values:    make(map[any]any),
+		errs:      make(chan error, SendLimit),
 	}
 }
 
 // Read message
 func (c *Client) Read() {
 	defer func() {
-		SocketManager.Unset <- c
+		socketManager.Unset <- c
 		if err := recover(); err != nil {
 			color.Red("Client %s read error: %v", c.id, err)
 		}
@@ -129,7 +137,7 @@ func (c *Client) Close() {
 
 	err := c.socket.Close()
 	if err != nil {
-		SocketManager.Errs <- err
+		socketManager.Errs <- err
 	}
 }
 
@@ -140,7 +148,7 @@ func (c *Client) setLastTime(currentTime int64) {
 
 // isTimeout or not
 func (c *Client) isTimeout(currentTime int64) bool {
-	return c.lastTime+c.timeout <= currentTime
+	return c.lastTime+c.breakTime <= currentTime
 }
 
 // Heartbeat detection
@@ -152,7 +160,7 @@ func (c *Client) Heartbeat() {
 		select {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
-				SocketManager.Unset <- c
+				socketManager.Unset <- c
 			}
 		case <-c.close:
 			return

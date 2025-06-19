@@ -2,36 +2,37 @@ package main
 
 import (
 	"fmt"
-	"github.com/fatih/color"
 	"github.com/gin-generator/websocket"
 	"github.com/gin-gonic/gin"
-	"os"
 )
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	// Start websocket manager
-	websocket.NewManager(fmt.Sprintf("%s/example/env.yaml", pwd))
-
 	// Start api server
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// upgrade websocket
-	r.GET("/ws", websocket.Connect())
+	// must init manager
+	websocket.NewManagerWithOptions(
+		websocket.WithRegisterLimit(100),
+		websocket.WithMaxConn(10000),
+		websocket.WithReadBufferSize(1024),
+		websocket.WithWriteBufferSize(1024),
+	)
+
+	// upgrade websocket router
+	r.GET("/ws", websocket.Connect(
+		websocket.WithSendLimit(1000), // Set the sending frequency
+		websocket.WithBreakTime(600),  // Set the timeout disconnection time.
+		websocket.WithInterval(300),   // Set how often to check
+	))
 
 	// Register external trigger route
 	websocket.Router.RegisterText("ping", TextPing)
 
-	// Start the api server
-	color.Green("API server start: %s:%s",
-		websocket.Cfg.GetString("Host"), websocket.Cfg.GetString("Port"))
-	err = r.Run(websocket.Cfg.GetString("Host") + ":" + websocket.Cfg.GetString("Port"))
+	// Start the Websocket server
+	fmt.Println("Websocket server start: 0.0.0.0:9503")
+	err := r.Run("0.0.0.0:9503")
 	if err != nil {
 		panic(err)
 	}

@@ -12,8 +12,8 @@ import (
 
 // Handler function type
 type (
-	TextHandler  func(client *Client, message *Message)
-	ProtoHandler func(client *Client, message *m.Message)
+	TextHandler  func(message *Message)
+	ProtoHandler func(message *m.Message)
 )
 
 var Router *CommandRouter
@@ -47,13 +47,13 @@ func NewCommandRouter() *CommandRouter {
 	}
 }
 
-func (r *CommandRouter) RegisterText(command string, handler func(*Client, *Message)) {
+func (r *CommandRouter) RegisterText(command string, handler func(*Message)) {
 	r.textMu.Lock()
 	r.textHandlers[command] = handler
 	r.textMu.Unlock()
 }
 
-func (r *CommandRouter) RegisterProto(command string, handler func(*Client, *m.Message)) {
+func (r *CommandRouter) RegisterProto(command string, handler func(*m.Message)) {
 	r.protoMu.Lock()
 	r.protoHandlers[command] = handler
 	r.protoMu.Unlock()
@@ -85,7 +85,7 @@ func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
 		return
 	}
 
-	handler(client, &message)
+	handler(&message)
 	r.textResponse(client, &message)
 	return
 }
@@ -134,7 +134,7 @@ func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
 		return
 	}
 
-	handler(client, &message)
+	handler(&message)
 	r.protoResponse(client, &message)
 	return
 }
