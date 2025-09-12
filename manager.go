@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	RegisterLimit = 1000
+	RateLimit = 1000
 )
 
 var (
@@ -33,9 +33,9 @@ func newDefaultManager() *Manager {
 	once.Do(func() {
 		socketManager = &Manager{
 			pool:     make(map[string]*Client),
-			Register: make(chan *Client, RegisterLimit),
-			Unset:    make(chan *Client, RegisterLimit),
-			Errs:     make(chan error, RegisterLimit),
+			Register: make(chan *Client, RateLimit),
+			Unset:    make(chan *Client, RateLimit),
+			Errs:     make(chan error, RateLimit),
 			mu:       new(sync.Mutex),
 		}
 	})

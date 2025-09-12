@@ -80,11 +80,11 @@ func NewManagerWithOptions(opts ...ManagerOption) {
 	go manager.scheduler(ctx)
 }
 
-func WithRegisterLimit(registerLimit int) ManagerOption {
+func WithRegisterLimit(raleLimit int) ManagerOption {
 	return managerOptionFunc(func(m *Manager) {
-		m.Register = make(chan *Client, registerLimit)
-		m.Unset = make(chan *Client, registerLimit)
-		m.Errs = make(chan error, registerLimit)
+		m.Register = make(chan *Client, raleLimit)
+		m.Unset = make(chan *Client, raleLimit)
+		m.Errs = make(chan error, raleLimit)
 	})
 }
 

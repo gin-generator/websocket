@@ -42,7 +42,7 @@ func TestTextPing(t *testing.T) {
 		// Set a read deadline (e.g., 5 seconds)
 		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
-		// Read the response
+		// read the response
 		_, response, errs := conn.ReadMessage()
 		if errs != nil {
 			// If a timeout or other error occurs, break the loop

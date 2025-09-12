@@ -11,8 +11,8 @@ import (
 
 const (
 	SendLimit = 100
-	BreakTime = 600  // Heartbeat breakTime in seconds
-	Interval  = 1000 // Heartbeat interval in milliseconds
+	BreakTime = 600  // heartbeat breakTime in seconds
+	Interval  = 1000 // heartbeat interval in milliseconds
 )
 
 type Client struct {
@@ -53,8 +53,8 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 	}
 }
 
-// Read message
-func (c *Client) Read() {
+// read message
+func (c *Client) read() {
 	defer func() {
 		socketManager.Unset <- c
 		if err := recover(); err != nil {
@@ -64,46 +64,56 @@ func (c *Client) Read() {
 
 	var closeErr *websocket.CloseError
 	for {
-		types, message, err := c.socket.ReadMessage()
-		if err != nil && errors.As(err, &closeErr) {
+		select {
+		case <-c.close:
 			return
-		}
+		default:
+			types, message, err := c.socket.ReadMessage()
+			if err != nil && errors.As(err, &closeErr) {
+				return
+			}
 
-		if message == nil {
-			c.setLastTime(time.Now().Unix()) // set last time
-		}
+			if message == nil {
+				c.setLastTime(time.Now().Unix()) // set last time
+			}
 
-		send := Send{
-			Protocol: types,
-			Message:  message,
-		}
+			send := Send{
+				Protocol: types,
+				Message:  message,
+			}
 
-		switch types {
-		case websocket.TextMessage:
-			err = Router.TextHandle(c, send)
-		case websocket.BinaryMessage:
-			err = Router.ProtoHandle(c, send)
-		case -1: // No ping frames were detected
-			return
-		}
-		if err != nil {
-			continue
+			switch types {
+			case websocket.TextMessage:
+				err = Router.TextHandle(c, send)
+			case websocket.BinaryMessage:
+				err = Router.ProtoHandle(c, send)
+			case -1: // No ping frames were detected
+				return
+			}
+			if err != nil {
+				continue
+			}
 		}
 	}
 }
 
-// Write Send message
-func (c *Client) Write() {
+// write Send message
+func (c *Client) write() {
 	defer func() {
 		if err := recover(); err != nil {
 			color.Red("Client %s write error: %v", c.id, err)
 		}
 	}()
 
-	var closeErr *websocket.CloseError
-	for v := range c.send {
-		if err := c.socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
+	for {
+		select {
+		case <-c.close: // Listen for close signal
 			return
+		case v := <-c.send:
+			var closeErr *websocket.CloseError
+			if err := c.socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
+				return
+			}
 		}
 	}
 }
@@ -122,23 +132,29 @@ func (c *Client) SendMessage(message Send) {
 
 // Close logout
 func (c *Client) Close() {
-	select {
-	case <-c.send:
-	default:
-		close(c.send)
-		c.sendClose = true
-	}
+	c.close <- struct{}{}
 
-	select {
-	case <-c.close:
-	default:
-		close(c.close)
-	}
+	once.Do(func() {
+		c.close <- struct{}{}
 
-	err := c.socket.Close()
-	if err != nil {
-		socketManager.Errs <- err
-	}
+		select {
+		case <-c.send:
+		default:
+			close(c.send)
+			c.sendClose = true
+		}
+
+		select {
+		case <-c.close:
+		default:
+			close(c.close)
+		}
+
+		err := c.socket.Close()
+		if err != nil {
+			socketManager.Errs <- err
+		}
+	})
 }
 
 // setLastTime Set the last time
@@ -151,8 +167,8 @@ func (c *Client) isTimeout(currentTime int64) bool {
 	return c.lastTime+c.breakTime <= currentTime
 }
 
-// Heartbeat detection
-func (c *Client) Heartbeat() {
+// heartbeat detection
+func (c *Client) heartbeat() {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(c.interval))
 	defer ticker.Stop()
 

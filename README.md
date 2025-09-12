@@ -12,7 +12,7 @@ A lightweight WebSocket manager for Go, built with `gin-gonic` and `gorilla/webs
 - **WebSocket Management**: Handle multiple WebSocket connections with ease.
 - **Message Routing**: Route messages based on custom protocols.
 - **Validation**: Built-in support for struct validation using `go-playground/validator`.
-- **Heartbeat Detection**: Automatically detect and close inactive connections.
+- **heartbeat Detection**: Automatically detect and close inactive connections.
 - **Customizable**: Easily extend and customize the library for your needs.
 
 ## Installation
