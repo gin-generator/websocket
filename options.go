@@ -1,7 +1,11 @@
 package websocket
 
 import (
+	"context"
 	"github.com/gorilla/websocket"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 type (
@@ -65,7 +69,15 @@ func NewManagerWithOptions(opts ...ManagerOption) {
 		opt.apply(manager)
 	}
 
-	go manager.scheduler()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		cancel()
+	}()
+
+	go manager.scheduler(ctx)
 }
 
 func WithRegisterLimit(registerLimit int) ManagerOption {

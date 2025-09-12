@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -8,14 +9,11 @@ import (
 )
 
 const (
-	RegisterLimit   = 1000
-	ReadBufferSize  = 4096
-	WriteBufferSize = 4096
-	MaxConnections  = 100000
+	RegisterLimit = 1000
 )
 
 var (
-	Once          sync.Once
+	once          sync.Once
 	socketManager *Manager
 )
 
@@ -32,7 +30,7 @@ type Manager struct {
 }
 
 func newDefaultManager() *Manager {
-	Once.Do(func() {
+	once.Do(func() {
 		socketManager = &Manager{
 			pool:     make(map[string]*Client),
 			Register: make(chan *Client, RegisterLimit),
@@ -45,9 +43,14 @@ func newDefaultManager() *Manager {
 }
 
 // scheduler Start the websocket scheduler
-func (m *Manager) scheduler() {
+func (m *Manager) scheduler(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			close(m.Register)
+			close(m.Unset)
+			close(m.Errs)
+			return
 		case client := <-m.Register:
 			m.registerClient(client)
 		case client := <-m.Unset:
@@ -66,7 +69,6 @@ func (m *Manager) registerClient(client *Client) {
 	if _, ok := m.pool[client.id]; !ok {
 		m.pool[client.id] = client
 		m.total.Add(1)
-		fmt.Println("Client", client.id, "registered successfully")
 	}
 }
 
@@ -79,7 +81,6 @@ func (m *Manager) close(client *Client) {
 		client.Close()
 		delete(m.pool, client.id)
 		m.total.Add(^uint32(0))
-		fmt.Println("Client", client.id, "closed successfully")
 	}
 }
 
