@@ -3,7 +3,7 @@ package websocket
 import (
 	"context"
 	"errors"
-	"github.com/fatih/color"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"time"
@@ -58,7 +58,7 @@ func (c *Client) read() {
 	defer func() {
 		SocketManager.unset <- c
 		if err := recover(); err != nil {
-			color.Red("Client %s read error: %v", c.id, err)
+			fmt.Println(fmt.Printf("Client %s read error: %v", c.id, err))
 		}
 	}()
 
@@ -101,7 +101,7 @@ func (c *Client) read() {
 func (c *Client) write() {
 	defer func() {
 		if err := recover(); err != nil {
-			color.Red("Client %s write error: %v", c.id, err)
+			fmt.Println(fmt.Printf("Client %s write error: %v", c.id, err))
 		}
 	}()
 
@@ -134,27 +134,23 @@ func (c *Client) SendMessage(message Send) {
 func (c *Client) Close() {
 	c.close <- struct{}{}
 
-	once.Do(func() {
-		c.close <- struct{}{}
+	select {
+	case <-c.send:
+	default:
+		close(c.send)
+		c.sendClose = true
+	}
 
-		select {
-		case <-c.send:
-		default:
-			close(c.send)
-			c.sendClose = true
-		}
+	select {
+	case <-c.close:
+	default:
+		close(c.close)
+	}
 
-		select {
-		case <-c.close:
-		default:
-			close(c.close)
-		}
-
-		err := c.socket.Close()
-		if err != nil {
-			SocketManager.errs <- err
-		}
-	})
+	err := c.socket.Close()
+	if err != nil {
+		SocketManager.errs <- err
+	}
 }
 
 // setLastTime Set the last time
@@ -177,6 +173,7 @@ func (c *Client) heartbeat() {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
 				SocketManager.unset <- c
+				return
 			}
 		case <-c.close:
 			return

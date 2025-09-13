@@ -24,8 +24,8 @@ func main() {
 	// upgrade websocket router
 	r.GET("/ws", websocket.Connect(
 		websocket.WithSendLimit(1000), // Set the sending frequency
-		websocket.WithBreakTime(600),  // Set the timeout disconnection time.
-		websocket.WithInterval(300),   // Set how often to check
+		websocket.WithBreakTime(60),   // Set the timeout disconnection time.
+		websocket.WithInterval(200),   // Set how often to check
 	))
 
 	// register external trigger route
