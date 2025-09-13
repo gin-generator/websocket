@@ -17,10 +17,10 @@ A lightweight WebSocket manager for Go, built with `gin-gonic` and `gorilla/webs
 
 ## Installation
 
-To install the library, use `go Get`:
+To install the library, use `go get`:
 
 ```bash
-go Get -u github.com/gin-generator/websocket
+go get -u github.com/gin-generator/websocket
 ```
 
 ## Examples

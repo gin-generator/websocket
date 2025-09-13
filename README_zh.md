@@ -18,10 +18,10 @@ WebSocket 服务器实现，支持连接管理、消息路由和验证等功能�
 
 ## 安装
 
-使用 `go Get` 安装库：
+使用 `go get` 安装库：
 
 ```bash
-go Get -u github.com/gin-generator/websocket
+go get -u github.com/gin-generator/websocket
 ```
 
 ## 例子
