@@ -7,8 +7,8 @@ import (
 )
 
 type subscribe struct {
-	Id      string `json:"id"`
-	Channel string `json:"channel"`
+	Id      string `json:"id" validate:"required"`
+	Channel string `json:"channel" validate:"required"`
 }
 
 func Subscribe(message *websocket.Message) {

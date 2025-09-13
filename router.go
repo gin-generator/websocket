@@ -75,7 +75,7 @@ func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
 		message.Message = "no handler found for command: " + message.Command
 		message.Code = http.StatusBadRequest
 		r.textResponse(client, &message)
-		return errors.New("no handler found for command: " + message.Command)
+		return errors.New(message.Message)
 	}
 
 	// validator
@@ -118,7 +118,7 @@ func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
 		message.Message = "no handler found for command: " + message.Command
 		message.Code = http.StatusBadRequest
 		r.protoResponse(client, &message)
-		return errors.New("no handler found for command: " + message.Command)
+		return errors.New(message.Message)
 	}
 
 	// validator

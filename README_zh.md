@@ -29,3 +29,10 @@ go get -u github.com/gin-generator/websocket
 你可以在这个 [example](example) 文件夹找到示例。
 
 - [Basic WebSocket Server](example/logic.go): 演示如何处理WebSocket连接和消息。
+
+## 鸣谢
+
+本项目基于以下开源库构建：
+
+- [gin-gonic](https://github.com/gin-gonic/gin): 一个用 Go 编写的 Web 框架。
+- [gorilla/websocket](https://github.com/gorilla/websocket): 一个用于构建 WebSocket 应用的 Go 库。

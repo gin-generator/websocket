@@ -28,3 +28,10 @@ go get -u github.com/gin-generator/websocket
 You can find usage examples in the [example](example) folder.
 
 - [Basic WebSocket Server](example/logic.go): Demonstrates how to handle WebSocket connections and messages.
+
+## Acknowledgments
+
+This project is built on the following open-source libraries:
+
+- [gin-gonic](https://github.com/gin-gonic/gin): A web framework written in Go.
+- [gorilla/websocket](https://github.com/gorilla/websocket): A Go library for building WebSocket applications.
