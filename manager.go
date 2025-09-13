@@ -9,37 +9,40 @@ import (
 )
 
 const (
-	RateLimit = 1000
+	RateLimit = 100
 )
 
 var (
 	once          sync.Once
-	socketManager *Manager
+	SocketManager *Manager
 )
 
 type Manager struct {
 	pool            map[string]*Client
-	Register        chan *Client
-	Unset           chan *Client
-	MaxConn         uint32
-	ReadBufferSize  int
-	WriteBufferSize int
-	Errs            chan error
+	register        chan *Client
+	unset           chan *Client
+	maxConn         uint32
+	readBufferSize  int
+	writeBufferSize int
+	errs            chan error
 	mu              *sync.Mutex
 	total           atomic.Uint32
+
+	storage Memory
 }
 
 func newDefaultManager() *Manager {
 	once.Do(func() {
-		socketManager = &Manager{
+		SocketManager = &Manager{
 			pool:     make(map[string]*Client),
-			Register: make(chan *Client, RateLimit),
-			Unset:    make(chan *Client, RateLimit),
-			Errs:     make(chan error, RateLimit),
+			register: make(chan *Client, RateLimit),
+			unset:    make(chan *Client, RateLimit),
+			errs:     make(chan error, RateLimit),
 			mu:       new(sync.Mutex),
+			storage:  newSystemMemory(),
 		}
 	})
-	return socketManager
+	return SocketManager
 }
 
 // scheduler Start the websocket scheduler
@@ -47,21 +50,21 @@ func (m *Manager) scheduler(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			close(m.Register)
-			close(m.Unset)
-			close(m.Errs)
+			close(m.register)
+			close(m.unset)
+			close(m.errs)
 			return
-		case client := <-m.Register:
+		case client := <-m.register:
 			m.registerClient(client)
-		case client := <-m.Unset:
+		case client := <-m.unset:
 			m.close(client)
-		case err := <-m.Errs:
+		case err := <-m.errs:
 			fmt.Println("Error:", err)
 		}
 	}
 }
 
-// registerClient Register client
+// registerClient register client
 func (m *Manager) registerClient(client *Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -84,8 +87,8 @@ func (m *Manager) close(client *Client) {
 	}
 }
 
-// GetClient Get client by id
-func (m *Manager) GetClient(id string) (client *Client, err error) {
+// getClient Get client by id
+func (m *Manager) getClient(id string) (client *Client, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -95,16 +98,53 @@ func (m *Manager) GetClient(id string) (client *Client, err error) {
 	return nil, errors.New("client not found")
 }
 
-// GetAllClient Get all clients
-func (m *Manager) GetAllClient() (pool map[string]*Client) {
+// getAllClient Get all clients
+func (m *Manager) getAllClient() (pool map[string]*Client) {
 	return m.pool
 }
 
-// SendBroadcast Send broadcast message
-func (m *Manager) SendBroadcast(message Send) {
+// sendBroadcast Send broadcast message
+func (m *Manager) sendBroadcast(message Send) {
 	for _, client := range m.pool {
 		go func(c *Client, msg Send) {
 			c.send <- msg
 		}(client, message)
 	}
+}
+
+// Subscribe Subscribe to channel
+func (m *Manager) Subscribe(id, channel string) error {
+	return m.storage.Set(id, channel)
+}
+
+// Unsubscribe from channel
+func (m *Manager) Unsubscribe(id, channel string) error {
+	return m.storage.Delete(id, channel)
+}
+
+// Publish message to channel
+func (m *Manager) Publish(channel string, protocol int, message []byte) (err error) {
+	ids, err := m.storage.Get(channel)
+	if err != nil {
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string, protocol int, message []byte) {
+			defer wg.Done()
+			client, errs := m.getClient(id)
+			if errs != nil {
+				_ = m.storage.Delete(id, channel)
+				return
+			}
+			client.send <- Send{
+				Protocol: protocol,
+				Message:  message,
+			}
+		}(id, protocol, message)
+	}
+	wg.Wait()
+	return nil
 }

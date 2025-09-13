@@ -28,13 +28,13 @@ func Connect(opts ...Option) gin.HandlerFunc {
 // upgrade websocket connection
 func upgrade(w http.ResponseWriter, req *http.Request, opts ...Option) (err error) {
 
-	if socketManager.total.Load() == socketManager.MaxConn {
+	if SocketManager.total.Load() == SocketManager.maxConn {
 		return errors.New("websocket service connections exceeded the upper limit")
 	}
 
 	conn, err := (&websocket.Upgrader{
-		ReadBufferSize:  socketManager.ReadBufferSize,
-		WriteBufferSize: socketManager.WriteBufferSize,
+		ReadBufferSize:  SocketManager.readBufferSize,
+		WriteBufferSize: SocketManager.writeBufferSize,
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
@@ -50,11 +50,12 @@ func upgrade(w http.ResponseWriter, req *http.Request, opts ...Option) (err erro
 	go client.heartbeat()
 
 	// register client
-	socketManager.Register <- client
+	SocketManager.register <- client
 
 	// first message
 	message := Message{
 		RequestId: uuid.NewV4().String(),
+		SocketId:  client.id,
 		Command:   "connect",
 		Message:   "success",
 	}

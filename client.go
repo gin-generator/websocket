@@ -56,7 +56,7 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 // read message
 func (c *Client) read() {
 	defer func() {
-		socketManager.Unset <- c
+		SocketManager.unset <- c
 		if err := recover(); err != nil {
 			color.Red("Client %s read error: %v", c.id, err)
 		}
@@ -152,7 +152,7 @@ func (c *Client) Close() {
 
 		err := c.socket.Close()
 		if err != nil {
-			socketManager.Errs <- err
+			SocketManager.errs <- err
 		}
 	})
 }
@@ -176,7 +176,7 @@ func (c *Client) heartbeat() {
 		select {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
-				socketManager.Unset <- c
+				SocketManager.unset <- c
 			}
 		case <-c.close:
 			return

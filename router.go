@@ -20,6 +20,7 @@ var Router *CommandRouter
 
 type Message struct {
 	RequestId string `json:"request_id" validate:"required"`
+	SocketId  string `json:"socket_id" validate:"required"`
 	Command   string `json:"command" validate:"required"`
 	Code      int32  `json:"code,omitempty"`
 	Message   string `json:"message,omitempty"`
@@ -65,6 +66,7 @@ func (r *CommandRouter) TextHandle(client *Client, send Send) (err error) {
 	if err != nil {
 		return
 	}
+	message.SocketId = client.id
 
 	r.textMu.Lock()
 	handler, ok := r.textHandlers[message.Command]
@@ -107,6 +109,7 @@ func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
 	if err != nil {
 		return
 	}
+	message.SocketId = client.id
 
 	r.protoMu.Lock()
 	handler, ok := r.protoHandlers[message.Command]
@@ -121,6 +124,7 @@ func (r *CommandRouter) ProtoHandle(client *Client, send Send) (err error) {
 	// validator
 	msg := Message{
 		RequestId: message.RequestId,
+		SocketId:  message.SocketId,
 		Command:   message.Command,
 		Code:      message.Code,
 		Message:   message.Message,

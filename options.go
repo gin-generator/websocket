@@ -82,26 +82,32 @@ func NewManagerWithOptions(opts ...ManagerOption) {
 
 func WithRegisterLimit(raleLimit int) ManagerOption {
 	return managerOptionFunc(func(m *Manager) {
-		m.Register = make(chan *Client, raleLimit)
-		m.Unset = make(chan *Client, raleLimit)
-		m.Errs = make(chan error, raleLimit)
+		m.register = make(chan *Client, raleLimit)
+		m.unset = make(chan *Client, raleLimit)
+		m.errs = make(chan error, raleLimit)
 	})
 }
 
 func WithMaxConn(maxConn uint32) ManagerOption {
 	return managerOptionFunc(func(m *Manager) {
-		m.MaxConn = maxConn
+		m.maxConn = maxConn
 	})
 }
 
 func WithReadBufferSize(size int) ManagerOption {
 	return managerOptionFunc(func(m *Manager) {
-		m.ReadBufferSize = size
+		m.readBufferSize = size
 	})
 }
 
 func WithWriteBufferSize(size int) ManagerOption {
 	return managerOptionFunc(func(m *Manager) {
-		m.WriteBufferSize = size
+		m.writeBufferSize = size
+	})
+}
+
+func WithSubscribeManager(storage Memory) ManagerOption {
+	return managerOptionFunc(func(m *Manager) {
+		m.storage = storage
 	})
 }

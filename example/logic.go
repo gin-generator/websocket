@@ -6,8 +6,8 @@ import (
 )
 
 type Demo struct {
-	Id   uint32 `json:"id"`
-	Name string `json:"name"`
+	Id   uint32 `json:"id" validate:"required"`
+	Name string `json:"name" validate:"required"`
 }
 
 func TextPing(message *websocket.Message) {

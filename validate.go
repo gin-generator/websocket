@@ -15,7 +15,7 @@ var (
 // init creates a validator instance and initializes the translator
 func init() {
 	validate = validator.New()
-	// Register custom validators
+	// register custom validators
 	err := validate.RegisterValidation("phone", validatePhoneNumber)
 	if err != nil {
 		return

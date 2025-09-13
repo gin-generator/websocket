@@ -18,6 +18,7 @@ func main() {
 		websocket.WithMaxConn(10000),
 		websocket.WithReadBufferSize(1024),
 		websocket.WithWriteBufferSize(1024),
+		// websocket.WithSubscribeManager(newRedisManager()), // use your own redis manager
 	)
 
 	// upgrade websocket router
@@ -27,8 +28,9 @@ func main() {
 		websocket.WithInterval(300),   // Set how often to check
 	))
 
-	// Register external trigger route
+	// register external trigger route
 	websocket.Router.RegisterText("ping", TextPing)
+	websocket.Router.RegisterText("subscribe", Subscribe)
 
 	// Start the Websocket server
 	fmt.Println("Websocket server start: 0.0.0.0:9503")
@@ -36,4 +38,23 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func newRedisManager() websocket.Memory {
+	return &RedisManager{}
+}
+
+// RedisManager implement your own redis manager
+type RedisManager struct{}
+
+func (r *RedisManager) Set(id, channel string) error {
+	return nil
+}
+
+func (r *RedisManager) Get(channel string) (ids []string, err error) {
+	return nil, nil
+}
+
+func (r *RedisManager) Delete(id, channel string) error {
+	return nil
 }

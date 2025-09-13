@@ -6,8 +6,9 @@ option go_package = "./message";
 
 message Message {
   string request_id = 1;
-  string command = 2;
-  int32 code = 3;
-  string message = 4;
-  bytes data = 5;
+  string socket_id = 2;
+  string command = 3;
+  int32 code = 4;
+  string message = 5;
+  bytes data = 6;
 }
