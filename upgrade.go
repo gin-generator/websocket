@@ -12,9 +12,9 @@ import (
 	"syscall"
 )
 
-func Connect(opts ...Option) gin.HandlerFunc {
+func Connect(engine *Engine, opts ...Option) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		err := upgrade(c.Writer, c.Request, opts...)
+		err := upgrade(c, engine, opts...)
 		if err != nil {
 			c.Writer.WriteHeader(http.StatusInternalServerError)
 			_, err = c.Writer.Write([]byte(err.Error()))
@@ -26,34 +26,31 @@ func Connect(opts ...Option) gin.HandlerFunc {
 }
 
 // upgrade websocket connection
-func upgrade(w http.ResponseWriter, req *http.Request, opts ...Option) (err error) {
-
-	if SocketManager.total.Load() == SocketManager.maxConn {
+func upgrade(c *gin.Context, engine *Engine, opts ...Option) (err error) {
+	if engine.total.Load() == engine.maxConn {
 		return errors.New("websocket service connections exceeded the upper limit")
 	}
 
 	conn, err := (&websocket.Upgrader{
-		ReadBufferSize:  SocketManager.readBufferSize,
-		WriteBufferSize: SocketManager.writeBufferSize,
+		ReadBufferSize:  engine.readBufferSize,
+		WriteBufferSize: engine.writeBufferSize,
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
-	}).Upgrade(w, req, nil)
+	}).Upgrade(c.Writer, c.Request, nil)
 
 	if err != nil {
 		return
 	}
 
 	client := NewClientWithOptions(conn, opts...)
+	client.engine = engine
 	go client.read()
 	go client.write()
 	go client.heartbeat()
 
-	// register client
-	SocketManager.register <- client
-
-	// first message
-	message := Message{
+	// TODO first message
+	message := JsonMessage{
 		RequestId: uuid.NewV4().String(),
 		SocketId:  client.id,
 		Command:   "connect",
@@ -63,10 +60,8 @@ func upgrade(w http.ResponseWriter, req *http.Request, opts ...Option) (err erro
 	if err != nil {
 		return
 	}
-	client.send <- Send{
-		Protocol: websocket.TextMessage,
-		Message:  bytes,
-	}
+	client.protocol = websocket.TextMessage
+	client.message <- bytes
 
 	go func() {
 		sigChan := make(chan os.Signal, 1)

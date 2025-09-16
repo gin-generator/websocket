@@ -12,25 +12,22 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// must init manager
-	websocket.NewManagerWithOptions(
-		websocket.WithRegisterLimit(100),
-		websocket.WithMaxConn(10000),
+	engine := websocket.NewEngineWithOptions(
+		websocket.WithMaxConn(100),
 		websocket.WithReadBufferSize(1024),
 		websocket.WithWriteBufferSize(1024),
-		// websocket.WithSubscribeManager(newRedisManager()), // use your own redis manager
+		// websocket.WithSubscribeEngine(newRedisManager()), // use your own redis manager
 	)
+
+	// register external trigger route
 
 	// upgrade websocket router
 	r.GET("/ws", websocket.Connect(
+		engine,
 		websocket.WithSendLimit(1000), // Set the sending frequency
 		websocket.WithBreakTime(60),   // Set the timeout disconnection time.
 		websocket.WithInterval(200),   // Set how often to check
 	))
-
-	// register external trigger route
-	websocket.Router.RegisterText("ping", TextPing)
-	websocket.Router.RegisterText("subscribe", Subscribe)
 
 	// Start the Websocket server
 	fmt.Println("Websocket server start: 0.0.0.0:9503")

@@ -1,30 +1,26 @@
 package websocket
 
 import (
-	"context"
 	"github.com/gorilla/websocket"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 type (
 	Option interface {
 		apply(*Client)
 	}
-	ManagerOption interface {
-		apply(*Manager)
+	EngineOption interface {
+		apply(*Engine)
 	}
 
-	optionFunc        func(*Client)
-	managerOptionFunc func(*Manager)
+	optionFunc       func(*Client)
+	engineOptionFunc func(*Engine)
 )
 
 func (f optionFunc) apply(client *Client) {
 	f(client)
 }
 
-func (m managerOptionFunc) apply(manager *Manager) {
+func (m engineOptionFunc) apply(manager *Engine) {
 	m(manager)
 }
 
@@ -40,7 +36,7 @@ func NewClientWithOptions(conn *websocket.Conn, opts ...Option) *Client {
 
 func WithSendLimit(sendLimit int) Option {
 	return optionFunc(func(c *Client) {
-		c.send = make(chan Send, sendLimit)
+		c.message = make(chan []byte, sendLimit)
 	})
 }
 
@@ -62,52 +58,36 @@ func WithClientValues(values map[any]any) Option {
 	})
 }
 
-func NewManagerWithOptions(opts ...ManagerOption) {
-	manager := newDefaultManager()
+func NewEngineWithOptions(opts ...EngineOption) *Engine {
+	engine := newDefaultEngine()
 
 	for _, opt := range opts {
-		opt.apply(manager)
+		opt.apply(engine)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
-		cancel()
-	}()
-
-	go manager.scheduler(ctx)
+	return engine
 }
 
-func WithRegisterLimit(raleLimit int) ManagerOption {
-	return managerOptionFunc(func(m *Manager) {
-		m.register = make(chan *Client, raleLimit)
-		m.unset = make(chan *Client, raleLimit)
-		m.errs = make(chan error, raleLimit)
-	})
-}
-
-func WithMaxConn(maxConn uint32) ManagerOption {
-	return managerOptionFunc(func(m *Manager) {
+func WithMaxConn(maxConn uint32) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
 		m.maxConn = maxConn
 	})
 }
 
-func WithReadBufferSize(size int) ManagerOption {
-	return managerOptionFunc(func(m *Manager) {
+func WithReadBufferSize(size int) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
 		m.readBufferSize = size
 	})
 }
 
-func WithWriteBufferSize(size int) ManagerOption {
-	return managerOptionFunc(func(m *Manager) {
+func WithWriteBufferSize(size int) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
 		m.writeBufferSize = size
 	})
 }
 
-func WithSubscribeManager(storage Memory) ManagerOption {
-	return managerOptionFunc(func(m *Manager) {
+func WithSubscribeEngine(storage Memory) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
 		m.storage = storage
 	})
 }

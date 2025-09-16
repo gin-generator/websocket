@@ -1,14 +1,14 @@
 syntax = "proto3";
 
-package message;
+package websocket;
 
-option go_package = "./message";
+option go_package = ".;websocket";
 
-message Message {
+message ProtoMessage {
   string request_id = 1;
   string socket_id = 2;
   string command = 3;
-  int32 code = 4;
-  string message = 5;
-  bytes data = 6;
+  optional int32 code = 4;
+  optional string message = 5;
+  optional bytes data = 6;
 }

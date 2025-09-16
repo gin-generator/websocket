@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/gin-generator/websocket"
-	"net/http"
 )
 
 type Demo struct {
@@ -10,7 +9,7 @@ type Demo struct {
 	Name string `json:"name" validate:"required"`
 }
 
-func TextPing(message *websocket.Message) {
+func TextPing(message *websocket.JsonMessage) {
 	//var params Demo
 	//err := json.Unmarshal(message.Data, &params)
 	//if err != nil {
@@ -18,6 +17,6 @@ func TextPing(message *websocket.Message) {
 	//	message.Message = err.Error()
 	//	return
 	//}
-	message.Code = http.StatusOK
-	message.Message = "pong"
+	//message.Code = http.StatusOK
+	//message.Message = "pong"
 }

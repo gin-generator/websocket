@@ -5,7 +5,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Serializer[T any] interface {
+type Serializer[T Message] interface {
 	Serialize(data T) ([]byte, error)
 	Deserialize(data []byte, v *T) error
 	Data() T

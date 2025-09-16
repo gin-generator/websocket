@@ -2,10 +2,12 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
+	"google.golang.org/protobuf/proto"
 	"time"
 )
 
@@ -17,23 +19,20 @@ const (
 
 type Client struct {
 	context.Context
+	engine *Engine
 
 	id        string          // unique identifier for each connection
 	socket    *websocket.Conn // user connection
-	send      chan Send       // send message
-	sendClose bool            // send channel is close
-	close     chan struct{}   // close channel
-	firstTime int64           // first connection time
-	lastTime  int64           // last heartbeat time
-	breakTime int64           // heartbeat breakTime
-	interval  int64           // heartbeat interval
-	values    map[any]any     // context values
+	protocol  int
+	message   chan []byte
+	sendClose bool          // send channel is close
+	close     chan struct{} // close channel
+	firstTime int64         // first connection time
+	lastTime  int64         // last heartbeat time
+	breakTime int64         // heartbeat breakTime
+	interval  int64         // heartbeat interval
+	values    map[any]any   // context values
 	errs      chan error
-}
-
-type Send struct {
-	Protocol int
-	Message  []byte
 }
 
 func newDefaultClient(conn *websocket.Conn) *Client {
@@ -41,7 +40,8 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 	return &Client{
 		id:        uuid.NewV4().String(),
 		socket:    conn,
-		send:      make(chan Send, SendLimit),
+		protocol:  websocket.TextMessage,
+		message:   make(chan []byte, SendLimit),
 		sendClose: false,
 		close:     make(chan struct{}, 1),
 		firstTime: times,
@@ -53,11 +53,43 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 	}
 }
 
+// execute message
+func (c *Client) execute(message []byte) error {
+	switch c.protocol {
+	case websocket.TextMessage:
+		var textMessage JsonMessage
+		if err := json.Unmarshal(message, &textMessage); err != nil {
+			return err
+		}
+		handler, err := c.engine.jsonRouter.get(textMessage.Command)
+		if err != nil {
+			return err
+		}
+		handler(&textMessage)
+		c.send(textMessage.toBytes())
+	case websocket.BinaryMessage:
+		var protoMessage ProtoMessage
+		if err := proto.Unmarshal(message, &protoMessage); err != nil {
+			return err
+		}
+		handler, err := c.engine.protoRouter.get(protoMessage.Command)
+		if err != nil {
+			return err
+		}
+		handler(&protoMessage)
+		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
+		c.send(wrapper.toBytes())
+	default:
+		return errors.New("unsupported message type")
+	}
+	return nil
+}
+
 // read message
 func (c *Client) read() {
 	defer func() {
-		SocketManager.unset <- c
 		if err := recover(); err != nil {
+			// TODO log
 			fmt.Println(fmt.Printf("Client %s read error: %v", c.id, err))
 		}
 	}()
@@ -77,16 +109,12 @@ func (c *Client) read() {
 				c.setLastTime(time.Now().Unix()) // set last time
 			}
 
-			send := Send{
-				Protocol: types,
-				Message:  message,
-			}
-
 			switch types {
-			case websocket.TextMessage:
-				err = Router.TextHandle(c, send)
-			case websocket.BinaryMessage:
-				err = Router.ProtoHandle(c, send)
+			case websocket.TextMessage, websocket.BinaryMessage:
+				c.protocol = types
+				if err = c.execute(message); err != nil {
+					c.errs <- err
+				}
 			case -1: // No ping frames were detected
 				return
 			}
@@ -101,6 +129,7 @@ func (c *Client) read() {
 func (c *Client) write() {
 	defer func() {
 		if err := recover(); err != nil {
+			// TODO log
 			fmt.Println(fmt.Printf("Client %s write error: %v", c.id, err))
 		}
 	}()
@@ -109,23 +138,23 @@ func (c *Client) write() {
 		select {
 		case <-c.close: // Listen for close signal
 			return
-		case v := <-c.send:
+		case v := <-c.message:
 			var closeErr *websocket.CloseError
-			if err := c.socket.WriteMessage(v.Protocol, v.Message); err != nil && errors.As(err, &closeErr) {
+			if err := c.socket.WriteMessage(c.protocol, v); err != nil && errors.As(err, &closeErr) {
 				return
 			}
 		}
 	}
 }
 
-// SendMessage Send message
-func (c *Client) SendMessage(message Send) {
+// send message
+func (c *Client) send(message []byte) {
 	select {
 	case <-c.close:
 		return
 	default:
 		if !c.sendClose {
-			c.send <- message
+			c.message <- message
 		}
 	}
 }
@@ -135,9 +164,9 @@ func (c *Client) Close() {
 	c.close <- struct{}{}
 
 	select {
-	case <-c.send:
+	case <-c.message:
 	default:
-		close(c.send)
+		close(c.message)
 		c.sendClose = true
 	}
 
@@ -147,10 +176,8 @@ func (c *Client) Close() {
 		close(c.close)
 	}
 
-	err := c.socket.Close()
-	if err != nil {
-		SocketManager.errs <- err
-	}
+	_ = c.socket.Close()
+	c.engine.delete(c.id)
 }
 
 // setLastTime Set the last time
@@ -172,7 +199,6 @@ func (c *Client) heartbeat() {
 		select {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
-				SocketManager.unset <- c
 				return
 			}
 		case <-c.close:
