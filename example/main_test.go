@@ -7,3 +7,7 @@ import (
 func TestTextPing(t *testing.T) {
 
 }
+
+func TestProtoPing(t *testing.T) {
+
+}

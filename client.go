@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
+	"net/http"
 	"time"
 )
 
@@ -54,35 +55,54 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 }
 
 // execute message
-func (c *Client) execute(message []byte) error {
+func (c *Client) execute(message []byte) {
 	switch c.protocol {
 	case websocket.TextMessage:
 		var textMessage JsonMessage
 		if err := json.Unmarshal(message, &textMessage); err != nil {
-			return err
+			textMessage.Message = err.Error()
+			textMessage.Code = http.StatusBadRequest
+			c.send(textMessage.toBytes())
+			return
+		}
+		if err := ValidateStructWithOutCtx(&textMessage); err != nil {
+			textMessage.Message = err.Error()
+			textMessage.Code = http.StatusBadRequest
+			c.send(textMessage.toBytes())
+			return
 		}
 		handler, err := c.engine.jsonRouter.get(textMessage.Command)
 		if err != nil {
-			return err
+			textMessage.Message = err.Error()
+			textMessage.Code = http.StatusBadRequest
+			c.send(textMessage.toBytes())
+			return
 		}
 		handler(&textMessage)
 		c.send(textMessage.toBytes())
 	case websocket.BinaryMessage:
 		var protoMessage ProtoMessage
+		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
 		if err := proto.Unmarshal(message, &protoMessage); err != nil {
-			return err
+			protoMessage.Message = err.Error()
+			protoMessage.Code = http.StatusBadRequest
+			c.send(wrapper.toBytes())
+			return
 		}
 		handler, err := c.engine.protoRouter.get(protoMessage.Command)
 		if err != nil {
-			return err
+			protoMessage.Message = err.Error()
+			protoMessage.Code = http.StatusBadRequest
+			c.send(wrapper.toBytes())
+			return
 		}
 		handler(&protoMessage)
-		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
 		c.send(wrapper.toBytes())
 	default:
-		return errors.New("unsupported message type")
+		// TODO log
+		return
 	}
-	return nil
+	return
 }
 
 // read message
@@ -112,14 +132,9 @@ func (c *Client) read() {
 			switch types {
 			case websocket.TextMessage, websocket.BinaryMessage:
 				c.protocol = types
-				if err = c.execute(message); err != nil {
-					c.errs <- err
-				}
+				c.execute(message)
 			case -1: // No ping frames were detected
 				return
-			}
-			if err != nil {
-				continue
 			}
 		}
 	}
@@ -166,8 +181,8 @@ func (c *Client) Close() {
 	select {
 	case <-c.message:
 	default:
-		close(c.message)
 		c.sendClose = true
+		close(c.message)
 	}
 
 	select {
@@ -199,6 +214,7 @@ func (c *Client) heartbeat() {
 		select {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
+				c.Close()
 				return
 			}
 		case <-c.close:

@@ -7,9 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 func Connect(engine *Engine, opts ...Option) gin.HandlerFunc {
@@ -45,6 +42,7 @@ func upgrade(c *gin.Context, engine *Engine, opts ...Option) (err error) {
 
 	client := NewClientWithOptions(conn, opts...)
 	client.engine = engine
+	engine.registerClient(client)
 	go client.read()
 	go client.write()
 	go client.heartbeat()
@@ -63,11 +61,5 @@ func upgrade(c *gin.Context, engine *Engine, opts ...Option) (err error) {
 	client.protocol = websocket.TextMessage
 	client.message <- bytes
 
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
-		client.Close()
-	}()
 	return nil
 }

@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -47,6 +48,7 @@ func (e *Engine) RegisterProtoRouter(command string, handler Handler[*ProtoMessa
 // registerClient register client
 func (e *Engine) registerClient(client *Client) {
 	_, loaded := e.pool.LoadOrStore(client.id, client)
+	fmt.Println(loaded)
 	if !loaded {
 		e.total.Add(1)
 	}
@@ -75,6 +77,10 @@ func (e *Engine) getClient(id string) (client *Client, err error) {
 
 // Subscribe Subscribe to channel
 func (e *Engine) Subscribe(id, channel string) error {
+	_, err := e.getClient(id)
+	if err != nil {
+		return err
+	}
 	return e.storage.Set(id, channel)
 }
 

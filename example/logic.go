@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gin-generator/websocket"
+	"net/http"
 )
 
 type Demo struct {
@@ -17,6 +18,11 @@ func TextPing(message *websocket.JsonMessage) {
 	//	message.Message = err.Error()
 	//	return
 	//}
-	//message.Code = http.StatusOK
-	//message.Message = "pong"
+	message.Code = http.StatusOK
+	message.Message = "pong"
+}
+
+func ProtoPing(message *websocket.ProtoMessage) {
+	message.Code = http.StatusOK
+	message.Message = "pong"
 }

@@ -20,6 +20,8 @@ func main() {
 	)
 
 	// register external trigger route
+	engine.RegisterJsonRouter("ping", TextPing)
+	engine.RegisterProtoRouter("ping", ProtoPing)
 
 	// upgrade websocket router
 	r.GET("/ws", websocket.Connect(
