@@ -24,7 +24,7 @@ func (m engineOptionFunc) apply(manager *Engine) {
 	m(manager)
 }
 
-func NewClientWithOptions(conn *websocket.Conn, opts ...Option) *Client {
+func newClientWithOptions(conn *websocket.Conn, opts ...Option) *Client {
 	client := newDefaultClient(conn)
 
 	for _, opt := range opts {
@@ -65,6 +65,7 @@ func NewEngineWithOptions(opts ...EngineOption) *Engine {
 		opt.apply(engine)
 	}
 
+	go engine.waitForShutdown()
 	return engine
 }
 

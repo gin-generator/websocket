@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"errors"
-	"fmt"
+	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
 )
 
 const (
@@ -48,7 +50,6 @@ func (e *Engine) RegisterProtoRouter(command string, handler Handler[*ProtoMessa
 // registerClient register client
 func (e *Engine) registerClient(client *Client) {
 	_, loaded := e.pool.LoadOrStore(client.id, client)
-	fmt.Println(loaded)
 	if !loaded {
 		e.total.Add(1)
 	}
@@ -111,4 +112,22 @@ func (e *Engine) Publish(channel string, protocol int, message []byte) (err erro
 	}
 	wg.Wait()
 	return nil
+}
+
+func (e *Engine) shutdown() {
+	e.pool.Range(func(key, value any) bool {
+		if client, ok := value.(*Client); ok {
+			client.release()
+		}
+		return true
+	})
+}
+
+func (e *Engine) waitForShutdown() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+
+	<-sig
+
+	e.shutdown()
 }

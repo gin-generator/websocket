@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"google.golang.org/protobuf/proto"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -20,6 +20,8 @@ const (
 
 type Client struct {
 	context.Context
+	once *sync.Once
+
 	engine *Engine
 
 	id        string          // unique identifier for each connection
@@ -39,6 +41,8 @@ type Client struct {
 func newDefaultClient(conn *websocket.Conn) *Client {
 	times := time.Now().Unix()
 	return &Client{
+		once: &sync.Once{},
+
 		id:        uuid.NewV4().String(),
 		socket:    conn,
 		protocol:  websocket.TextMessage,
@@ -54,55 +58,69 @@ func newDefaultClient(conn *websocket.Conn) *Client {
 	}
 }
 
-// execute message
 func (c *Client) execute(message []byte) {
 	switch c.protocol {
 	case websocket.TextMessage:
-		var textMessage JsonMessage
-		if err := json.Unmarshal(message, &textMessage); err != nil {
-			textMessage.Message = err.Error()
-			textMessage.Code = http.StatusBadRequest
-			c.send(textMessage.toBytes())
-			return
-		}
-		if err := ValidateStructWithOutCtx(&textMessage); err != nil {
-			textMessage.Message = err.Error()
-			textMessage.Code = http.StatusBadRequest
-			c.send(textMessage.toBytes())
-			return
-		}
-		handler, err := c.engine.jsonRouter.get(textMessage.Command)
-		if err != nil {
-			textMessage.Message = err.Error()
-			textMessage.Code = http.StatusBadRequest
-			c.send(textMessage.toBytes())
-			return
-		}
-		handler(&textMessage)
-		c.send(textMessage.toBytes())
+		c.handleTextMessage(message)
 	case websocket.BinaryMessage:
-		var protoMessage ProtoMessage
-		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
-		if err := proto.Unmarshal(message, &protoMessage); err != nil {
-			protoMessage.Message = err.Error()
-			protoMessage.Code = http.StatusBadRequest
-			c.send(wrapper.toBytes())
-			return
-		}
-		handler, err := c.engine.protoRouter.get(protoMessage.Command)
-		if err != nil {
-			protoMessage.Message = err.Error()
-			protoMessage.Code = http.StatusBadRequest
-			c.send(wrapper.toBytes())
-			return
-		}
-		handler(&protoMessage)
-		c.send(wrapper.toBytes())
+		c.handleProtoMessage(message)
 	default:
-		// TODO log
+		// TODO log unsupported protocol
+	}
+}
+
+func (c *Client) handleTextMessage(message []byte) {
+	var textMessage JsonMessage
+	if err := json.Unmarshal(message, &textMessage); err != nil {
+		c.handleError(&textMessage, err, http.StatusBadRequest)
 		return
 	}
-	return
+	if err := ValidateStructWithOutCtx(&textMessage); err != nil {
+		c.handleError(&textMessage, err, http.StatusBadRequest)
+		return
+	}
+	handler, err := c.engine.jsonRouter.get(textMessage.Command)
+	if err != nil {
+		c.handleError(&textMessage, err, http.StatusBadRequest)
+		return
+	}
+	handler(&textMessage)
+	c.send(textMessage.toBytes())
+}
+
+func (c *Client) handleProtoMessage(message []byte) {
+	var protoMessage ProtoMessage
+	wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
+	if err := proto.Unmarshal(message, &protoMessage); err != nil {
+		c.handleError(wrapper, err, http.StatusBadRequest)
+		return
+	}
+
+	if protoMessage.RequestId == "" || protoMessage.SocketId == "" || protoMessage.Command == "" {
+		c.handleError(wrapper, errors.New("request_id,socket_id,command is required"), http.StatusBadRequest)
+		return
+	}
+
+	handler, err := c.engine.protoRouter.get(protoMessage.Command)
+	if err != nil {
+		c.handleError(wrapper, err, http.StatusBadRequest)
+		return
+	}
+	handler(&protoMessage)
+	c.send(wrapper.toBytes())
+}
+
+func (c *Client) handleError(response interface{ toBytes() []byte }, err error, code int32) {
+	switch res := response.(type) {
+	case *JsonMessage:
+		res.Message = err.Error()
+		res.Code = code
+		c.send(res.toBytes())
+	case *ProtoFuncWrapper:
+		res.ProtoMessage.Message = err.Error()
+		res.ProtoMessage.Code = code
+		c.send(res.toBytes())
+	}
 }
 
 // read message
@@ -110,7 +128,6 @@ func (c *Client) read() {
 	defer func() {
 		if err := recover(); err != nil {
 			// TODO log
-			fmt.Println(fmt.Printf("Client %s read error: %v", c.id, err))
 		}
 	}()
 
@@ -134,6 +151,7 @@ func (c *Client) read() {
 				c.protocol = types
 				c.execute(message)
 			case -1: // No ping frames were detected
+				c.release()
 				return
 			}
 		}
@@ -145,7 +163,6 @@ func (c *Client) write() {
 	defer func() {
 		if err := recover(); err != nil {
 			// TODO log
-			fmt.Println(fmt.Printf("Client %s write error: %v", c.id, err))
 		}
 	}()
 
@@ -174,25 +191,30 @@ func (c *Client) send(message []byte) {
 	}
 }
 
-// Close logout
-func (c *Client) Close() {
-	c.close <- struct{}{}
+// release
+func (c *Client) release() {
+	c.once.Do(func() {
+		c.close <- struct{}{}
 
-	select {
-	case <-c.message:
-	default:
-		c.sendClose = true
-		close(c.message)
-	}
+		select {
+		case <-c.message:
+		default:
+			c.sendClose = true
+			close(c.message)
+		}
 
-	select {
-	case <-c.close:
-	default:
-		close(c.close)
-	}
+		select {
+		case <-c.close:
+		default:
+			close(c.close)
+		}
+		close(c.errs)
 
-	_ = c.socket.Close()
-	c.engine.delete(c.id)
+		_ = c.socket.Close()
+		if c.engine.storage != nil {
+			c.engine.delete(c.id)
+		}
+	})
 }
 
 // setLastTime Set the last time
@@ -214,7 +236,7 @@ func (c *Client) heartbeat() {
 		select {
 		case <-ticker.C:
 			if c.isTimeout(time.Now().Unix()) {
-				c.Close()
+				c.release()
 				return
 			}
 		case <-c.close:

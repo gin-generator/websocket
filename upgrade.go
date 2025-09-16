@@ -40,7 +40,7 @@ func upgrade(c *gin.Context, engine *Engine, opts ...Option) (err error) {
 		return
 	}
 
-	client := NewClientWithOptions(conn, opts...)
+	client := newClientWithOptions(conn, opts...)
 	client.engine = engine
 	engine.registerClient(client)
 	go client.read()
