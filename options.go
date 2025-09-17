@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"github.com/gin-generator/logger"
 	"github.com/gorilla/websocket"
 )
 
@@ -90,5 +91,11 @@ func WithWriteBufferSize(size int) EngineOption {
 func WithSubscribeEngine(storage Memory) EngineOption {
 	return engineOptionFunc(func(m *Engine) {
 		m.storage = storage
+	})
+}
+
+func WithLogger(logger *logger.Logger) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
+		m.log = logger
 	})
 }

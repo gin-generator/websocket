@@ -65,7 +65,7 @@ func (c *Client) execute(message []byte) {
 	case websocket.BinaryMessage:
 		c.handleProtoMessage(message)
 	default:
-		// TODO log unsupported protocol
+		c.engine.log.ErrorString("Client", "execute error", "unsupported protocol")
 	}
 }
 
@@ -127,7 +127,7 @@ func (c *Client) handleError(response interface{ toBytes() []byte }, err error, 
 func (c *Client) read() {
 	defer func() {
 		if err := recover(); err != nil {
-			// TODO log
+			c.engine.log.ErrorString("Client", "read error", err.(error).Error())
 		}
 	}()
 
@@ -162,7 +162,7 @@ func (c *Client) read() {
 func (c *Client) write() {
 	defer func() {
 		if err := recover(); err != nil {
-			// TODO log
+			c.engine.log.ErrorString("Client", "write error", err.(error).Error())
 		}
 	}()
 

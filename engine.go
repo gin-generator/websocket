@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"errors"
+	"github.com/gin-generator/logger"
 	"os"
 	"os/signal"
 	"sync"
@@ -25,6 +26,7 @@ type Engine struct {
 	readBufferSize  int
 	writeBufferSize int
 	storage         Memory
+	log             *logger.Logger
 }
 
 func newDefaultEngine() *Engine {
@@ -34,6 +36,7 @@ func newDefaultEngine() *Engine {
 		readBufferSize:  ReadBufferSize,
 		writeBufferSize: WriteBufferSize,
 		storage:         newSystemMemory(),
+		log:             logger.NewLogger(),
 	}
 }
 
@@ -97,6 +100,7 @@ func (e *Engine) Publish(channel string, protocol int, message []byte) (err erro
 		return
 	}
 
+	// TODO worker pool
 	var wg sync.WaitGroup
 	for _, id := range ids {
 		wg.Add(1)
