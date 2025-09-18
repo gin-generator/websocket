@@ -1,6 +1,6 @@
 # Go 的 WebSocket 管理器
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/yourusername/yourrepository.svg)](https://pkg.go.dev/github.com/gin-generator/websocket)
+[![Go Reference](https://img.shields.io/github/v/release/gin-generator/websocket.svg?style=flat-square)](https://pkg.go.dev/github.com/gin-generator/websocket)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
