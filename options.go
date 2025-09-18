@@ -53,6 +53,14 @@ func WithInterval(interval int64) Option {
 	})
 }
 
+func WithProtocol(protocol int) Option {
+	return optionFunc(func(c *Client) {
+		if protocol == websocket.TextMessage || protocol == websocket.BinaryMessage {
+			c.protocol = protocol
+		}
+	})
+}
+
 func WithClientValues(values map[any]any) Option {
 	return optionFunc(func(c *Client) {
 		c.values = values
@@ -85,6 +93,12 @@ func WithReadBufferSize(size int) EngineOption {
 func WithWriteBufferSize(size int) EngineOption {
 	return engineOptionFunc(func(m *Engine) {
 		m.writeBufferSize = size
+	})
+}
+
+func WithPublishWorkPool(poolSize int) EngineOption {
+	return engineOptionFunc(func(m *Engine) {
+		m.workPool = poolSize
 	})
 }
 

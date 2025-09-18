@@ -1,11 +1,9 @@
 package websocket
 
 import (
-	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/satori/go.uuid"
 	"net/http"
 )
 
@@ -47,19 +45,6 @@ func upgrade(c *gin.Context, engine *Engine, opts ...Option) (err error) {
 	go client.write()
 	go client.heartbeat()
 
-	// TODO first message
-	message := JsonMessage{
-		RequestId: uuid.NewV4().String(),
-		SocketId:  client.id,
-		Command:   "connect",
-		Message:   "success",
-	}
-	bytes, err := json.Marshal(message)
-	if err != nil {
-		return
-	}
-	client.protocol = websocket.TextMessage
-	client.message <- bytes
-
+	client.firstMessage()
 	return nil
 }

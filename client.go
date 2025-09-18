@@ -16,12 +16,14 @@ const (
 	SendLimit = 100
 	BreakTime = 600  // heartbeat breakTime in seconds
 	Interval  = 1000 // heartbeat interval in milliseconds
+
+	Connected = "connected"
+	Success   = "success"
 )
 
 type Client struct {
 	context.Context
-	once *sync.Once
-
+	once   *sync.Once
 	engine *Engine
 
 	id        string          // unique identifier for each connection
@@ -242,6 +244,30 @@ func (c *Client) heartbeat() {
 		case <-c.close:
 			return
 		}
+	}
+}
+
+func (c *Client) firstMessage() {
+	switch c.protocol {
+	case websocket.TextMessage:
+		jsonMessage := JsonMessage{
+			RequestId: uuid.NewV4().String(),
+			SocketId:  c.id,
+			Command:   Connected,
+			Message:   Success,
+		}
+		c.send(jsonMessage.toBytes())
+	case websocket.BinaryMessage:
+		protoMessage := ProtoMessage{
+			RequestId: uuid.NewV4().String(),
+			SocketId:  c.id,
+			Command:   Connected,
+			Message:   Success,
+		}
+		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
+		c.send(wrapper.toBytes())
+	default:
+		c.engine.log.ErrorString("Client", "firstMessage error", "unsupported protocol")
 	}
 }
 

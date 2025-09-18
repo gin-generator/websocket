@@ -2,7 +2,9 @@ package websocket
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gin-generator/logger"
+	"github.com/panjf2000/ants/v2"
 	"os"
 	"os/signal"
 	"sync"
@@ -25,6 +27,7 @@ type Engine struct {
 	total           atomic.Uint32
 	readBufferSize  int
 	writeBufferSize int
+	workPool        int
 	storage         Memory
 	log             *logger.Logger
 }
@@ -35,6 +38,7 @@ func newDefaultEngine() *Engine {
 		protoRouter:     NewRouter[*ProtoMessage](),
 		readBufferSize:  ReadBufferSize,
 		writeBufferSize: WriteBufferSize,
+		workPool:        RateLimit,
 		storage:         newSystemMemory(),
 		log:             logger.NewLogger(),
 	}
@@ -94,25 +98,35 @@ func (e *Engine) Unsubscribe(id, channel string) error {
 }
 
 // Publish message to channel
-func (e *Engine) Publish(channel string, protocol int, message []byte) (err error) {
+func (e *Engine) Publish(channel string, message []byte) (err error) {
 	ids, err := e.storage.Get(channel)
 	if err != nil {
 		return
 	}
 
-	// TODO worker pool
+	pool, poolErr := ants.NewPool(e.workPool)
+	if poolErr != nil {
+		return fmt.Errorf("failed to create worker pool: %w", poolErr)
+	}
+	defer pool.Release()
+
 	var wg sync.WaitGroup
 	for _, id := range ids {
 		wg.Add(1)
-		go func(id string, protocol int, message []byte) {
+		key := id
+		err = pool.Submit(func() {
 			defer wg.Done()
-			client, errs := e.getClient(id)
+			client, errs := e.getClient(key)
 			if errs != nil {
-				_ = e.storage.Delete(id, channel)
+				_ = e.storage.Delete(key, channel)
 				return
 			}
 			client.message <- message
-		}(id, protocol, message)
+		})
+		if err != nil {
+			wg.Done()
+			e.log.ErrorString("Engine", "Publish error", err.Error())
+		}
 	}
 	wg.Wait()
 	return nil
@@ -130,8 +144,6 @@ func (e *Engine) shutdown() {
 func (e *Engine) waitForShutdown() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
 	<-sig
-
 	e.shutdown()
 }
