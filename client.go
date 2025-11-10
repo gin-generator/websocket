@@ -144,7 +144,7 @@ func (c *Client) read() {
 				return
 			}
 
-			if message == nil {
+			if message != nil {
 				c.setLastTime(time.Now().Unix()) // set last time
 			}
 
