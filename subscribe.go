@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"errors"
+	"sync"
 )
 
 type Memory interface {
@@ -12,15 +13,20 @@ type Memory interface {
 
 type SystemMemory struct {
 	subscribe map[string][]string
+	mux       *sync.RWMutex
 }
 
 func newSystemMemory() *SystemMemory {
 	return &SystemMemory{
 		subscribe: make(map[string][]string, RateLimit),
+		mux:       new(sync.RWMutex),
 	}
 }
 
 func (s *SystemMemory) Set(id, channel string) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if _, ok := s.subscribe[channel]; !ok {
 		s.subscribe[channel] = make([]string, RateLimit)
 	}
@@ -34,6 +40,9 @@ func (s *SystemMemory) Set(id, channel string) error {
 }
 
 func (s *SystemMemory) Get(channel string) (ids []string, err error) {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
 	if v, ok := s.subscribe[channel]; ok {
 		return v, nil
 	}
@@ -41,6 +50,9 @@ func (s *SystemMemory) Get(channel string) (ids []string, err error) {
 }
 
 func (s *SystemMemory) Delete(id, channel string) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if v, ok := s.subscribe[channel]; ok {
 		for i, vv := range v {
 			if vv == id {
