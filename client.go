@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/websocket"
@@ -21,8 +20,8 @@ const (
 	Success   = "success"
 )
 
+// Client represents a single WebSocket connection and implements context.Context for use within handlers (e.g. Value, Done).
 type Client struct {
-	context.Context
 	once   *sync.Once
 	engine *Engine
 
@@ -112,17 +111,9 @@ func (c *Client) handleProtoMessage(message []byte) {
 	c.send(wrapper.toBytes())
 }
 
-func (c *Client) handleError(response interface{ toBytes() []byte }, err error, code int32) {
-	switch res := response.(type) {
-	case *JsonMessage:
-		res.Message = err.Error()
-		res.Code = code
-		c.send(res.toBytes())
-	case *ProtoFuncWrapper:
-		res.ProtoMessage.Message = err.Error()
-		res.ProtoMessage.Code = code
-		c.send(res.toBytes())
-	}
+func (c *Client) handleError(response ErrorResponder, err error, code int32) {
+	response.SetError(err, code)
+	c.send(response.toBytes())
 }
 
 // read message
@@ -248,26 +239,33 @@ func (c *Client) heartbeat() {
 }
 
 func (c *Client) firstMessage() {
-	switch c.protocol {
-	case websocket.TextMessage:
-		jsonMessage := JsonMessage{
-			RequestId: uuid.NewV4().String(),
-			SocketId:  c.id,
-			Command:   Connected,
-			Message:   Success,
-		}
-		c.send(jsonMessage.toBytes())
-	case websocket.BinaryMessage:
-		protoMessage := ProtoMessage{
-			RequestId: uuid.NewV4().String(),
-			SocketId:  c.id,
-			Command:   Connected,
-			Message:   Success,
-		}
-		wrapper := &ProtoFuncWrapper{ProtoMessage: &protoMessage}
-		c.send(wrapper.toBytes())
-	default:
+	msg := buildConnectedResponse(c.protocol, c.id)
+	if msg == nil {
 		c.engine.log.ErrorString("Client", "firstMessage error", "unsupported protocol")
+		return
+	}
+	c.send(msg.toBytes())
+}
+
+// buildConnectedResponse builds the "connected" success response for the given protocol and client id; used by firstMessage and tests.
+func buildConnectedResponse(protocol int, id string) ErrorResponder {
+	switch protocol {
+	case websocket.TextMessage:
+		return &JsonMessage{
+			RequestId: uuid.NewV4().String(),
+			SocketId:  id,
+			Command:   Connected,
+			Message:   Success,
+		}
+	case websocket.BinaryMessage:
+		return &ProtoFuncWrapper{ProtoMessage: &ProtoMessage{
+			RequestId: uuid.NewV4().String(),
+			SocketId:  id,
+			Command:   Connected,
+			Message:   Success,
+		}}
+	default:
+		return nil
 	}
 }
 

@@ -99,7 +99,7 @@ func (e *Engine) Unsubscribe(id, channel string) error {
 
 // Publish message to channel
 func (e *Engine) Publish(channel string, message []byte) (err error) {
-	ids, err := e.storage.Get(channel)
+	ids, err := e.storage.GetSubscribers(channel)
 	if err != nil {
 		return
 	}

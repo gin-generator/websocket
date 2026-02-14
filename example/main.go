@@ -50,7 +50,7 @@ func (r *RedisManager) Set(id, channel string) error {
 	return nil
 }
 
-func (r *RedisManager) Get(channel string) (ids []string, err error) {
+func (r *RedisManager) GetSubscribers(channel string) (ids []string, err error) {
 	return nil, nil
 }
 

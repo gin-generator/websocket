@@ -11,6 +11,12 @@ type Func interface {
 	toBytes() []byte
 }
 
+// ErrorResponder is a message that can set error/code and be serialized for reply; used by handleError.
+type ErrorResponder interface {
+	SetError(err error, code int32)
+	toBytes() []byte
+}
+
 type Message interface {
 	*JsonMessage | *ProtoMessage
 }
@@ -35,6 +41,11 @@ func (j *JsonMessage) toBytes() []byte {
 	return marshal
 }
 
+func (j *JsonMessage) SetError(err error, code int32) {
+	j.Message = err.Error()
+	j.Code = code
+}
+
 type ProtoFuncWrapper struct {
 	*ProtoMessage
 }
@@ -42,6 +53,11 @@ type ProtoFuncWrapper struct {
 func (p *ProtoFuncWrapper) toBytes() []byte {
 	bytes, _ := proto.Marshal(p.ProtoMessage)
 	return bytes
+}
+
+func (p *ProtoFuncWrapper) SetError(err error, code int32) {
+	p.ProtoMessage.Message = err.Error()
+	p.ProtoMessage.Code = code
 }
 
 func NewRouter[T Message]() *Router[T] {

@@ -55,7 +55,7 @@ func TestProtoPing(t *testing.T) {
 
 			t.Logf("Received ProtoMessage: Code=%d, Message=%s", res.Code, res.Message)
 
-			// 若响应是 pong，则停止接收
+			// Stop when pong response is received
 			if res.Message == "pong" {
 				return
 			}

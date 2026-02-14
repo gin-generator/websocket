@@ -5,9 +5,10 @@ import (
 	"sync"
 )
 
+// Memory is the subscription store: it maps channels to subscriber connection ids.
 type Memory interface {
 	Set(id, channel string) error
-	Get(id string) (ids []string, err error)
+	GetSubscribers(channel string) (ids []string, err error)
 	Delete(id, channel string) error
 }
 
@@ -39,7 +40,7 @@ func (s *SystemMemory) Set(id, channel string) error {
 	return nil
 }
 
-func (s *SystemMemory) Get(channel string) (ids []string, err error) {
+func (s *SystemMemory) GetSubscribers(channel string) (ids []string, err error) {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 
